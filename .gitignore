@@ -1,3 +1,11 @@
+# Git Config File
+.gitconfig
+
+# DSstore files
+.DS_Store
+data/.DS_Store
+code/.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history

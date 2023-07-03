@@ -19,13 +19,9 @@ pacman::p_load(
 ```
 
 ## Import and Rename Variables
-```{r}
-data_extraction <- here("Documents/Temple/Wiens Lab", "data_extractions.csv")
-data <- read.csv(data_extraction)
-```
 
 ```{r import, echo=FALSE}
-data_extraction <- here("Documents/Temple/Wiens Lab", "data_extractions.csv")
+data_extraction <- here::here("data", "data_extractions.csv")
 data <- read.csv(data_extraction)
 
 #Study Design
