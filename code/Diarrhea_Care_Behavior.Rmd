@@ -77,14 +77,10 @@ data_recode <- data %>% rename(study_id = Study.ID,
               strat_sex = Stratified.sex,
               strat_severity = Stratified.severity
 )
-```
 
-## Data Quality Checks
-
-```{r Quality Check}
-# WIP
-
-# quality check to make sure the ISO code is spelled correctly
+# Filter to primary dataset
+data_recode <- data_recode %>%
+  filter(primary_dataset == 1)
 ```
 
 ## Calculate the Proportion of People Seeking Care by Entry ID
@@ -109,6 +105,14 @@ proportion_sought_care <- total_sought_care %>%
   mutate(prop_sought_care = ifelse(!is.na(mult_choice),
                                    sum(total_sought_care) / sum(total_surveyed[mult_choice]),
                                    total_sought_care / total_surveyed))
+```
+
+## Data Quality Checks
+
+```{r Quality Check}
+# WIP
+
+# quality check to make sure the ISO code is spelled correctly
 ```
 
 ## By Location Description
@@ -200,8 +204,7 @@ boxplot_plot <- ggplot(fac_filtered_data, aes(x = location_desc, y = prop_sought
   coord_flip() +
   theme_bw() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care by Location Description") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care by Location Description")
 
 print(boxplot_plot)
 
@@ -228,8 +231,7 @@ gen_hos_care_facility_plot <- ggplot(gen_hos_filtered_data, aes(x = location_des
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - All Hospital/Clinic") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - All Hospital/Clinic")
 
 # Print the plot
 gen_hos_care_facility_plot
@@ -249,8 +251,7 @@ public_hospital_plot <- ggplot(pub_hos_filtered_data, aes(x = location_desc, y =
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Public Hospital/Clinic") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - Public Hospital/Clinic")
 
 # Print the plot
 print(public_hospital_plot)
@@ -271,8 +272,7 @@ private_hospital_plot <- ggplot(pri_hos_filtered_data, aes(x = location_desc, y 
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Private Hospital/Clinic") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - Private Hospital/Clinic")
 
 # Print the plot
 print(private_hospital_plot)
@@ -292,8 +292,7 @@ pharm_plot <- ggplot(pharm_filtered_data, aes(x = location_desc, y = prop_sought
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Pharmacy") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - Pharmacy")
 
 # Print the plot
 print(pharm_plot)
@@ -314,8 +313,7 @@ trad_heal_plot <- ggplot(trad_heal_filtered_data, aes(x = location_desc, y = pro
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Traditional Healer") +
-  ylim(0, .2)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - Traditional Healer")
 
 # Print the plot
 print(trad_heal_plot)
@@ -336,8 +334,7 @@ non_hos_plot <- ggplot(non_hos_filtered_data, aes(x = location_desc, y = prop_so
   coord_flip() +
   theme_minimal() +
   labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Non-Hospital/Clinic") +
-  ylim(0, 1)  # Set y-axis limits
+  ggtitle("Proportion of People who Sought Care - Non-Hospital/Clinic")
 
 # Print the plot
 print(non_hos_plot)
