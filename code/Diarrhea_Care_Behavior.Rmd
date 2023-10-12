@@ -157,6 +157,9 @@ print(violin_plot)
 
 ### Calculate Proportion By Care Facility
 
+NB: Code below has bugs; n_surveyed and prop_sought_care are not calculated correctly (which is why we are seeking proportions > 1)
+Probably best to rewrite this
+
 ```{r}
 fac_sought_care <- proportion_sought_care %>%
   left_join(data_recode %>% distinct(entry_id, location_desc, location_type, n_did_survey, n_did), by = "entry_id") %>%
