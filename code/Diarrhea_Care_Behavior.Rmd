@@ -6,21 +6,19 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 ```
 
-## Packages
-
-```{r package install, warning = FALSE}
+```{r package install, message = FALSE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode,googlesheets4, dplyr, rio, here, janitor, tsibble, lubridate, skimr, tidyverse, gtsummary, dlookr, tinytex, ggplot2
+  countrycode,googlesheets4, dplyr, rio, 
+  here, janitor, tsibble, lubridate, skimr, 
+  tidyverse, gtsummary, dlookr, tinytex, ggplot2
 )
 ```
 
-## Import and Rename Variables
-
-```{r import, echo=FALSE}
+```{r import and rename variables}
 data_extraction <- here::here("data", "data_extractions.csv")
 data <- read.csv(data_extraction)
 
@@ -81,9 +79,77 @@ data_recode <- data %>% rename(study_id = Study.ID,
 # Filter to primary dataset
 data_recode <- data_recode %>%
   filter(primary_dataset == 1)
+
+# Simplify/clarify location description
+data_recode <- data_recode %>%
+  mutate(location_desc = ifelse(location_desc == 'IDP Camp (Internally Displaced Person) or Refugee Camp',
+                                'IDP or Refugee Camp', 
+                                ifelse(location_desc == 'Both', 'Urban and Rural', location_desc)))
 ```
 
+## Data Quality Checks
+
+### Location information
+
+```{r Quality Check}
+# quality check to make sure the ISO code is spelled correctly
+data_recode$country_name <- countrycode(data_recode$country, "iso3c", "country.name")
+
+wrong_iso <- data_recode %>%
+  filter(is.na(country_name))
+
+if (nrow(wrong_iso) > 0) {
+  message('The following study_ids have incorrect ISO3 codes. They will be included for now but should be corrected:\n',
+        paste0(unique(wrong_iso$study_id), sep = '\n'))
+}
+```
+
+### Impossible values
+
+```{r}
+# number surveyed larger than number surveyed
+wrong_n <- data_recode %>%
+  filter(n_did > n_did_survey)
+
+if (nrow(wrong_n) > 0) {
+  message('The following study_ids have the number surveyed smaller than the number that sought care. These will be excluded until fixed:\n',
+        paste0(unique(wrong_n$study_id), sep = '\n'))
+
+  # remove from data set until fixed
+  data_recode <- data_recode %>%
+    filter(n_did <= n_did_survey)
+}
+```
+
+### Entry IDs
+
+```{r}
+# entry_ids that have more than one N
+wrong_eid <- data_recode %>%
+  select(c('entry_id', 'n_did_survey')) %>%
+  unique() %>%
+  group_by(entry_id) %>%
+  reframe(n_check = sum(n_did_survey),
+          n_did_survey = n_did_survey) %>%
+  filter(n_did_survey != n_check)
+
+wrong_eids <- unique(wrong_eid$entry_id)
+
+if (length(wrong_eids) > 0) {
+  message('The following entry_ids have more than one sample size listed and should be checked (they may need to be separated into multiple entry_ids). These will be excluded until fixed:\n',
+        paste0(wrong_eids, sep = '\n'))
+
+  # remove from data set until fixed
+  data_recode <- data_recode %>%
+    filter(!entry_id %in% wrong_eids)
+}
+```
+
+<br>
+
 ## Calculate the Proportion of People Seeking Care by Entry ID
+
+NB: this preliminary analysis excludes non-primary data, multiple choice questions, and "would you" questions
 
 ```{r proportion of care seeking}
 # Calculate the Proportion of People Seeking Care by Entry ID
@@ -107,81 +173,26 @@ proportion_sought_care <- total_sought_care %>%
                                    total_sought_care / total_surveyed))
 ```
 
-## Data Quality Checks
+<br>
 
-```{r Quality Check}
-# WIP
+### Proportion By Care Facility
 
-# quality check to make sure the ISO code is spelled correctly
-```
-
-## By Location Description
-
-### Calculate Proportion of People Who Sought Care by Location Description
-
-```{r include=TRUE}
-#Add location_desc variable from data_recode to proportion_sought_care
-loc_proportion_sought_care <- proportion_sought_care %>%
-  left_join(data_recode %>% distinct(entry_id, location_desc), by = "entry_id") %>%
-  group_by(entry_id) %>%
-  summarize(total_sought_care = first(total_sought_care),
-            total_surveyed = first(total_surveyed),
-            mult_choice = first(mult_choice),
-            prop_sought_care = first(prop_sought_care),
-            location_desc = first(location_desc))
-
-# Filter out non-finite values and missing values
-loc_filtered_data <- loc_proportion_sought_care %>%
-  filter(!is.na(prop_sought_care) & is.finite(prop_sought_care))
-
-```
-
-#### Violin Plot
-
-```{r, echo = TRUE, warning = FALSE}
-
-violin_plot <- ggplot(loc_filtered_data, aes(x = prop_sought_care, y = location_desc)) +
-  geom_violin(fill = "white", color = "black") +
-  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
-  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +
-  coord_flip() +
-  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
-  scale_y_discrete(limits = rev(levels(loc_filtered_data$location_desc))) +
-  theme_minimal() +
-  labs(x = "Proportion of People who Sought Care", y = "Location Description") +
-  ggtitle("Proportion of People who Sought Care by Area Description")
-
-
-print(violin_plot)
-```
-
-### Calculate Proportion By Care Facility
-
-NB: Code below has bugs; n_surveyed and prop_sought_care are not calculated correctly (which is why we are seeking proportions > 1)
-Probably best to rewrite this
-
-```{r}
-fac_sought_care <- proportion_sought_care %>%
-  left_join(data_recode %>% distinct(entry_id, location_desc, location_type, n_did_survey, n_did), by = "entry_id") %>%
+```{r, message = FALSE}
+fac_sought_care <- data_recode %>% 
+  select(entry_id, mult_choice, location_type, n_did_survey, n_did) %>%
+  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  select(-mult_choice) %>%
   group_by(entry_id, location_type) %>%
   summarize(total_sought_care = sum(n_did),
-            total_surveyed = first(n_did_survey),
-            .groups = "drop")
-
-fac_sought_care <- fac_sought_care %>%
-  group_by(entry_id) %>%
-  mutate(prop_sought_care = total_sought_care / total_surveyed) %>%
-  ungroup()
-
-fac_filtered_data <- fac_sought_care %>%
-  filter(!is.na(prop_sought_care) & is.finite(prop_sought_care)) %>%
-  left_join(loc_proportion_sought_care %>% distinct(entry_id, location_desc), by = "entry_id")
+            total_surveyed = first(n_did_survey)) %>%
+  ungroup() %>%
+  mutate(prop_sought_care = total_sought_care / total_surveyed)
 
 ```
 
-#### Box Plot
-```{r, warning=FALSE}
-plot_care_location <- ggplot(fac_filtered_data, aes(x = location_type, y = prop_sought_care)) +
+
+```{r}
+plot_care_location <- ggplot(fac_sought_care, aes(x = location_type, y = prop_sought_care)) +
   geom_boxplot(fill = "white", color = "black") +
   geom_point(aes(color = "black"), fill = "black", shape = 21, size = 1, alpha = 0.5,position = position_jitter(width = 0.2, height = 0)) +
   labs(title = "Proportion of People Seeking Care",
@@ -200,25 +211,61 @@ plot_care_location
 
 ```
 
+<br>
+
+### Proportion by location setting
+
+```{r, message = FALSE}
+fac_sought_care <- data_recode %>% 
+  select(entry_id, mult_choice, location_desc, n_did_survey, n_did) %>%
+  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  select(-mult_choice) %>%
+  group_by(entry_id, location_desc) %>%
+  summarize(total_sought_care = sum(n_did),
+            total_surveyed = first(n_did_survey)) %>%
+  ungroup() %>%
+  mutate(prop_sought_care = total_sought_care / total_surveyed)
+
+```
+
 ```{r}
-boxplot_plot <- ggplot(fac_filtered_data, aes(x = location_desc, y = prop_sought_care)) +
+boxplot_plot <- ggplot(fac_sought_care, aes(x = location_desc, y = prop_sought_care)) +
   geom_boxplot(color = "black", outlier.shape = NA,  outlier.color = "white") + 
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter to the points
   coord_flip() +
   theme_bw() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care by Location Description")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion of People who Sought Care Outside of the Home")
 
-print(boxplot_plot)
+boxplot_plot
 
 
 ```
 
-### Calculate by the Type of Care Facility Sought
+<br>
+
+### Porportion by location setting and care facility
+
+```{r, message = FALSE}
+fac_sought_care <- data_recode %>% 
+  select(entry_id, mult_choice, location_desc, location_type, n_did_survey, n_did) %>%
+  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  select(-mult_choice) %>%
+  group_by(entry_id, location_desc, location_type) %>%
+  summarize(total_sought_care = sum(n_did),
+            total_surveyed = first(n_did_survey)) %>%
+  ungroup() %>%
+  mutate(prop_sought_care = total_sought_care / total_surveyed)
+
+```
+
+<br>
+
 #### By All Hospital/Clinics
-```{r, echo=TRUE}
+
+```{r}
 # Create a new location_type "All Hospital/Clinic"
-gen_hos_fac_filtered_data <- fac_filtered_data %>%
+gen_hos_fac_filtered_data <- fac_sought_care %>%
   mutate(location_type = ifelse(location_type %in% c("Public Hospital/Clinic", "Private Hospital/Clinic", "Hospital/Clinic"),
                                 "All Hospital/Clinic",
                                 location_type))
@@ -233,18 +280,21 @@ gen_hos_care_facility_plot <- ggplot(gen_hos_filtered_data, aes(x = location_des
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - All Hospital/Clinic")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at any Hospital/Clinic")
 
 # Print the plot
 gen_hos_care_facility_plot
 
 ```
 
+<br>
+
 #### By Public Hospital/Clinic
-```{r, echo=FALSE}
+
+```{r,}
 # Filter data for public hospitals/clinics
-pub_hos_filtered_data <- fac_filtered_data %>%
+pub_hos_filtered_data <- fac_sought_care %>%
   filter(location_type == "Public Hospital/Clinic")
 
 # Create plot
@@ -253,19 +303,21 @@ public_hospital_plot <- ggplot(pub_hos_filtered_data, aes(x = location_desc, y =
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Public Hospital/Clinic")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at Public Hospital/Clinic")
 
 # Print the plot
 print(public_hospital_plot)
 
 ```
 
+<br>
+
 #### By Private Hospital/Clinic
 
-```{r, echo=FALSE}
+```{r}
 # Filter data for Private hospitals/clinics
-pri_hos_filtered_data <- fac_filtered_data %>%
+pri_hos_filtered_data <- fac_sought_care %>%
   filter(location_type == "Private Hospital/Clinic")
 
 # Create plot
@@ -274,18 +326,20 @@ private_hospital_plot <- ggplot(pri_hos_filtered_data, aes(x = location_desc, y 
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Private Hospital/Clinic")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at Private Hospital/Clinic")
 
 # Print the plot
 print(private_hospital_plot)
 ```
 
+<br>
+
 #### By Pharmacy
 
-```{r, echo=FALSE}
+```{r}
 # Filter data for Pharmacy
-pharm_filtered_data <- fac_filtered_data %>%
+pharm_filtered_data <- fac_sought_care %>%
   filter(location_type == "Pharmacy")
 
 # Create plot
@@ -294,19 +348,20 @@ pharm_plot <- ggplot(pharm_filtered_data, aes(x = location_desc, y = prop_sought
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Pharmacy")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at Pharmacy")
 
 # Print the plot
 print(pharm_plot)
 ```
 
+<br>
 
 #### By Traditional Healer
 
-```{r, echo=FALSE}
+```{r}
 # Filter data for Traditional Healer
-trad_heal_filtered_data <- fac_filtered_data %>%
+trad_heal_filtered_data <- fac_sought_care %>%
   filter(location_type == "Traditional Healer")
 
 # Create plot
@@ -315,19 +370,20 @@ trad_heal_plot <- ggplot(trad_heal_filtered_data, aes(x = location_desc, y = pro
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Traditional Healer")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at Traditional Healer")
 
 # Print the plot
 print(trad_heal_plot)
 ```
 
+<br>
 
 #### By Non-Hospital/Clinic
 
-```{r, echo=FALSE}
+```{r}
 # Filter data for Non-Hospital/Clinic
-non_hos_filtered_data <- fac_filtered_data %>%
+non_hos_filtered_data <- fac_sought_care %>%
   filter(location_type == "Non-Hospital/Clinic")
 
 # Create plot
@@ -336,19 +392,20 @@ non_hos_plot <- ggplot(non_hos_filtered_data, aes(x = location_desc, y = prop_so
   geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Location Description", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion of People who Sought Care - Non-Hospital/Clinic")
+  labs(x = NULL, y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care at Non-Hospital/Clinic")
 
 # Print the plot
 print(non_hos_plot)
 ```
 
+<br>
 
-### By Country
+### Porportion by Country
+
 ```{r}
 options(dplyr.summarise.inform = FALSE)
 
-data_recode$country_name <- countrycode(data_recode$country, "iso3c", "country.name")
 proportion_sought_care_country <- proportion_sought_care %>%
   left_join(data_recode %>% select(entry_id, country_name, study_id, country), by = "entry_id") %>%
   distinct(entry_id, .keep_all = TRUE)
@@ -364,15 +421,14 @@ prop_sought_care_by_country <- proportion_sought_care_country %>%
   mutate(prop_sought_care = total_sought_care / total_surveyed)
 ```
 
-#### Bar Plot of Care Seeking By Country
-```{r, warning=FALSE}
+```{r, fig.width = 8}
 #Box Plot
 box_plot <- ggplot(proportion_sought_care_country) +
   geom_boxplot(aes(x = country_name, y = prop_sought_care), color = "black") +
   geom_point(aes(x = country_name, y = prop_sought_care), color = "black", size = 1) +  # Add points as dots
   theme_minimal() +
-  labs(x = "Country", y = "Proportion of People who Sought Care by Study_ID") +
-  ggtitle("Proportion of People who Sought Care by Country") +
+  labs(x = "Country", y = "Proportion of People who Sought Care") +
+  ggtitle("Proportion who Sought Care by Country") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 # Print the box plot
