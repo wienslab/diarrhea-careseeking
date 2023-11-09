@@ -130,7 +130,7 @@ data_map <- function(dt_plot, shp_plot, ad,
   myplot <- 
     ggplot(data = dt_shp) +
     geom_sf(colour = 'grey20', aes(fill = plot_var), show.legend = T) +
-    coord_sf(xlim = c(-112, 135), ylim = c(-35, 62)) + 
+    coord_sf(xlim = c(-155, 145), ylim = c(-35, 80)) + 
     ggtitle(str_to_title(ad)) +
     theme(text = element_text(size = 14),
           axis.text.x = element_blank(),
@@ -281,70 +281,77 @@ load_incidence <- function(df){
   inc_admin2 <- inc_list[["inc_admin2"]]
   
   # fill in inc_calc column in df_admin0
-  for(i in 1:nrow(df_admin0)){
-    message(i)
-    
-    # if this entry has only one country
-    if(str_detect(df_admin0$admin_min[i], ",") == FALSE){
+  if (nrow(df_admin0) > 0) {
+    for(i in 1:nrow(df_admin0)){
+      message(i)
       
-      df_admin0$inc_calc[i] <- inc_admin0[which(inc_admin0$ISO == df_admin0$admin_min[i]),]$inc_admin0
-      
-    }else{ # when this entry has more than one country, get the mean inc of all places
-      
-      places <- strsplit(df_admin0$admin_min[i], ", ")[[1]]
-      temp <- inc_admin0 %>% filter(ISO %in% places) %>% filter(inc_admin0 != 0) # remove those places that were not covered by incidence raster
-      if(nrow(temp) == 0){inc = 0}
-      if(nrow(temp) != 0){inc <- mean(temp$inc_admin0, na.rm = T)}
-      df_admin0$inc_calc[i] <- inc
-      
+      # if this entry has only one country
+      if(str_detect(df_admin0$admin_min[i], ",") == FALSE){
+        
+        df_admin0$inc_calc[i] <- inc_admin0[which(inc_admin0$ISO == df_admin0$admin_min[i]),]$inc_admin0
+        
+      }else{ # when this entry has more than one country, get the mean inc of all places
+        
+        places <- strsplit(df_admin0$admin_min[i], ", ")[[1]]
+        temp <- inc_admin0 %>% filter(ISO %in% places) %>% filter(inc_admin0 != 0) # remove those places that were not covered by incidence raster
+        if(nrow(temp) == 0){inc = 0}
+        if(nrow(temp) != 0){inc <- mean(temp$inc_admin0, na.rm = T)}
+        df_admin0$inc_calc[i] <- inc
+        
+      }
+      i = i + 1
     }
-    i = i + 1
   }
   
+  
   # fill in inc_calc column in df_admin1
-  for(i in 1:nrow(df_admin1)){
-    
-    # if this entry has only one admin1 area
-    if(str_detect(df_admin1$admin_min[i], ",") == FALSE){
+  if (nrow(df_admin1) > 0) {
+    for(i in 1:nrow(df_admin1)){
       
-      temp <- inc_admin1[which(inc_admin1$NAME_1 == df_admin1$admin_min[i] & inc_admin1$ISO == df_admin1$country_iso3[i]),]
-      if(nrow(temp) == 0){inc = 0}
-      if(nrow(temp) != 0){inc <- mean(temp$inc_admin1, na.rm = T)}
-      df_admin1$inc_calc[i] <- inc
-      
-    }else{ # when this entry has more than one admin1, get the mean inc of all places
-      
-      places <- strsplit(df_admin1$admin_min[i], ", ")[[1]]
-      temp <- inc_admin1 %>% filter(NAME_1 %in% places) %>% filter(inc_admin1 != 0)
-      if(nrow(temp) == 0){inc = 0}
-      if(nrow(temp) != 0){inc <- mean(temp$inc_admin1, na.rm = T)}
-      df_admin1$inc_calc[i] <- inc
-      
+      # if this entry has only one admin1 area
+      if(str_detect(df_admin1$admin_min[i], ",") == FALSE){
+        
+        temp <- inc_admin1[which(inc_admin1$NAME_1 == df_admin1$admin_min[i] & inc_admin1$ISO == df_admin1$country_iso3[i]),]
+        if(nrow(temp) == 0){inc = 0}
+        if(nrow(temp) != 0){inc <- mean(temp$inc_admin1, na.rm = T)}
+        df_admin1$inc_calc[i] <- inc
+        
+      }else{ # when this entry has more than one admin1, get the mean inc of all places
+        
+        places <- strsplit(df_admin1$admin_min[i], ", ")[[1]]
+        temp <- inc_admin1 %>% filter(NAME_1 %in% places) %>% filter(inc_admin1 != 0)
+        if(nrow(temp) == 0){inc = 0}
+        if(nrow(temp) != 0){inc <- mean(temp$inc_admin1, na.rm = T)}
+        df_admin1$inc_calc[i] <- inc
+        
+      }
+      i = i + 1
     }
-    i = i + 1
   }
   
   # fill in inc_calc column in df_admin2
-  for(i in 1:nrow(df_admin2)){
-    
-    # if this entry has only one admin2 area
-    if(str_detect(df_admin2$admin_min[i], ",") == FALSE){
+  if (nrow(df_admin2) > 0) {
+    for(i in 1:nrow(df_admin2)){
       
-      temp <- inc_admin2[which(inc_admin2$NAME_2 == df_admin2$admin_min[i] & inc_admin2$ISO == df_admin2$country_iso3[i]),]
-      if(nrow(temp) == 0){inc = 0}
-      if(nrow(temp) != 0){inc <- mean(temp$inc_admin2, na.rm = T)}
-      df_admin2$inc_calc[i] <- inc
-      
-    }else{ # when this entry has more than one admin2, get the mean inc of all places
-      
-      places <- strsplit(df_admin2$admin_min[i], ", ")[[1]]
-      temp <- inc_admin2 %>% filter(NAME_2 %in% places) %>% filter(inc_admin2 != 0)
-      if(nrow(temp) == 0){inc = 0}
-      if(nrow(temp) != 0){inc <- mean(temp$inc_admin2, na.rm = T)}
-      df_admin2$inc_calc[i] <- inc
-      
+      # if this entry has only one admin2 area
+      if(str_detect(df_admin2$admin_min[i], ",") == FALSE){
+        
+        temp <- inc_admin2[which(inc_admin2$NAME_2 == df_admin2$admin_min[i] & inc_admin2$ISO == df_admin2$country_iso3[i]),]
+        if(nrow(temp) == 0){inc = 0}
+        if(nrow(temp) != 0){inc <- mean(temp$inc_admin2, na.rm = T)}
+        df_admin2$inc_calc[i] <- inc
+        
+      }else{ # when this entry has more than one admin2, get the mean inc of all places
+        
+        places <- strsplit(df_admin2$admin_min[i], ", ")[[1]]
+        temp <- inc_admin2 %>% filter(NAME_2 %in% places) %>% filter(inc_admin2 != 0)
+        if(nrow(temp) == 0){inc = 0}
+        if(nrow(temp) != 0){inc <- mean(temp$inc_admin2, na.rm = T)}
+        df_admin2$inc_calc[i] <- inc
+        
+      }
+      i = i + 1
     }
-    i = i + 1
   }
   
   # bind all admin levels
