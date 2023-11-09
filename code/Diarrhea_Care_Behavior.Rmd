@@ -151,36 +151,12 @@ if (length(wrong_eids) > 0) {
 
 NB: this preliminary analysis excludes non-primary data, multiple choice questions, and "would you" questions
 
-```{r proportion of care seeking}
-# Calculate the Proportion of People Seeking Care by Entry ID
-## Calculate the total number of people surveyed for each study
-total_surveyed <- data_recode %>%
-  distinct(entry_id, n_did_survey, .keep_all = TRUE) %>%
-  group_by(entry_id) %>%
-  summarize(total_surveyed = sum(n_did_survey, na.rm = TRUE))
-
-## Calculate the total number of people who sought care for each study
-total_sought_care <- data_recode %>%
-  group_by(entry_id) %>%
-  summarize(total_sought_care = sum(n_did, na.rm = TRUE))
-
-### Marks those with multiple choices as NA
-proportion_sought_care <- total_sought_care %>%
-  left_join(total_surveyed, by = "entry_id") %>%
-  left_join(data_recode %>% distinct(entry_id, mult_choice), by = "entry_id") %>%
-  mutate(prop_sought_care = ifelse(!is.na(mult_choice),
-                                   sum(total_sought_care) / sum(total_surveyed[mult_choice]),
-                                   total_sought_care / total_surveyed))
-```
-
-<br>
-
 ### Proportion By Care Facility
 
 ```{r, message = FALSE}
 fac_sought_care <- data_recode %>% 
   select(entry_id, mult_choice, location_type, n_did_survey, n_did) %>%
-  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  filter(!is.na(n_did_survey) & mult_choice == 0) %>%
   select(-mult_choice) %>%
   group_by(entry_id, location_type) %>%
   summarize(total_sought_care = sum(n_did),
@@ -218,7 +194,7 @@ plot_care_location
 ```{r, message = FALSE}
 fac_sought_care <- data_recode %>% 
   select(entry_id, mult_choice, location_desc, n_did_survey, n_did) %>%
-  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  filter(!is.na(n_did_survey) & mult_choice == 0) %>%
   select(-mult_choice) %>%
   group_by(entry_id, location_desc) %>%
   summarize(total_sought_care = sum(n_did),
@@ -249,7 +225,7 @@ boxplot_plot
 ```{r, message = FALSE}
 fac_sought_care <- data_recode %>% 
   select(entry_id, mult_choice, location_desc, location_type, n_did_survey, n_did) %>%
-  filter(!is.na(n_did_survey) & is.na(mult_choice)) %>%
+  filter(!is.na(n_did_survey) & mult_choice == 0) %>%
   select(-mult_choice) %>%
   group_by(entry_id, location_desc, location_type) %>%
   summarize(total_sought_care = sum(n_did),
@@ -400,39 +376,3 @@ print(non_hos_plot)
 ```
 
 <br>
-
-### Porportion by Country
-
-```{r}
-options(dplyr.summarise.inform = FALSE)
-
-proportion_sought_care_country <- proportion_sought_care %>%
-  left_join(data_recode %>% select(entry_id, country_name, study_id, country), by = "entry_id") %>%
-  distinct(entry_id, .keep_all = TRUE)
-
-prop_sought_care_by_country <- proportion_sought_care_country %>%
-  filter(is.na(mult_choice)) %>%
-  group_by(entry_id, country_name) %>%
-  summarize(total_sought_care = sum(total_sought_care, na.rm = TRUE),
-            total_surveyed = sum(total_surveyed, na.rm = TRUE)) %>%
-  group_by(country_name) %>%
-  summarize(total_sought_care = sum(total_sought_care),
-            total_surveyed = sum(total_surveyed)) %>%
-  mutate(prop_sought_care = total_sought_care / total_surveyed)
-```
-
-```{r, fig.width = 8}
-#Box Plot
-box_plot <- ggplot(proportion_sought_care_country) +
-  geom_boxplot(aes(x = country_name, y = prop_sought_care), color = "black") +
-  geom_point(aes(x = country_name, y = prop_sought_care), color = "black", size = 1) +  # Add points as dots
-  theme_minimal() +
-  labs(x = "Country", y = "Proportion of People who Sought Care") +
-  ggtitle("Proportion who Sought Care by Country") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-# Print the box plot
-print(box_plot)
-
-```
-
