@@ -15,11 +15,8 @@ summarize_cats <- function(indat) {
     # prettier variable names
     mutate(variable = gsub('_', ' ', variable),
            variable = str_to_sentence(variable),
-           value = ifelse(is.na(value), 'Not reported', value))
-  
-  # order and remove row names
-  setorderv(cats, c('variable', 'value'), order = c(-1, 1))
-  rownames(cats) <- c()
+           value = ifelse(is.na(value), 'Not reported', value)) %>%
+    arrange(desc(variable), value)
   
   # return
   return(cats)
@@ -83,12 +80,12 @@ forest_plot <- function(plot_dt) {
 
 
 # proportion positive by grouping variable of interest
-plot_posrate <- function(indat, x_col, 
-                         y_col = 'prop_pos',
-                         rotate_x_labs = FALSE,
-                         color_col = x_col,
-                         palette = 'Dark2',
-                         num_colors = length(unique(indat[,color_col]))) {
+plot_seekprop <- function(indat, x_col, 
+                          y_col = 'prop_seek',
+                          rotate_x_labs = FALSE,
+                          color_col = x_col,
+                          palette = 'Dark2',
+                          num_colors = length(unique(indat[,color_col]))) {
   # plot
   ggplot(indat, aes(x = as.factor(get(x_col)), y = get(y_col))) +
     # boxplot without outliers
@@ -106,7 +103,7 @@ plot_posrate <- function(indat, x_col,
                                      hjust = ifelse(rotate_x_labs, 1, 0.5)),
           axis.text = element_text(size = 10),
           legend.position = 'none') +
-    ylab('Proportion positive') + xlab('') +
+    ylab('Proportion seeking care') + xlab('') +
     # title based on grouping variable
     ggtitle(str_to_sentence(gsub('_', ' ', x_col, )))
 }

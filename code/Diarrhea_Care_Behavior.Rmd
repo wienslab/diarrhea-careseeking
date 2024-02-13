@@ -75,7 +75,6 @@ data_recode <- data %>% rename(study_id = Study.ID,
               entries_overlap = Overlapping.Study,
               num_convert = Percents.converted.to.numbers,
               mult_choice = Multiple.Choices,
-              comments = Comments,
               extractor = Extractor.Initials,
               primary_dataset = Primary.dataset,
               strat_time = Stratified.time,
@@ -260,7 +259,7 @@ coverage_time <- data_recode %>%
   mutate(time_period = case_when(sampling_end <= as.Date("2004-12-31") ~ "2000~2004",
                                  sampling_end > as.Date("2004-12-31") & sampling_end <= as.Date("2009-12-31") ~ "2005~2009",
                                  sampling_end > as.Date("2009-12-31") & sampling_end <= as.Date("2014-12-31") ~ "2010~2014",
-                                 sampling_end > as.Date("2014-12-31") ~ "2015~2020")) %>%
+                                 sampling_end > as.Date("2014-12-31") ~ "2015~2022")) %>%
   # if multiple sampling periods within a time period, only report one observation
   dplyr::select(-sampling_end) %>%
   unique() %>%
@@ -280,7 +279,7 @@ coverage_time <- data_recode %>%
 
 # plot for each time period
 figS2 <- list()
-for (i in c("2000~2004", "2005~2009", "2010~2014", "2015~2020")) {
+for (i in c("2000~2004", "2005~2009", "2010~2014", "2015~2022")) {
   figS2[[i]] <- data_map(coverage_time, shp, ad = i)
 }
 
@@ -540,19 +539,19 @@ print(non_hos_plot)
 
 ## Cholera or watery diarrhea
 
-```{r}
+```{r, eval = FALSE}
 data_vc <- data_recode %>% 
   filter(case_definition_cat == 'Cholera (watery diarrhea)' | case_definition_cat == 'Cholera death')
 ```
 
-```{r load-incidence}
+```{r load-incidence, eval = FALSE}
 # load calculated estimated incidence (based on raster) from folder, the raster we have only covers sub-saharan Africa, other places were marked as NA
 data_vc <- suppressMessages(load_incidence(data_vc))
 ```
 
 Primary observations, non-multiple choice answers, and countries where we have non-zero or non-NA cholera incidence estimates. We also have cholera-specific care seeking data for Haiti, Zimbabwe, and Kenya.
 
-```{r, warning = FALSE, fig.width=5, fig.height=3.5}
+```{r, warning = FALSE, fig.width=5, fig.height=3.5, eval = FALSE}
 vc_sought_care <- data_vc %>% 
   dplyr::select(entry_id, country_iso3, mult_choice, location_type, n_did_survey, n_did, inc_calc) %>%
   filter(!is.na(n_did_survey) & mult_choice == 0) %>%

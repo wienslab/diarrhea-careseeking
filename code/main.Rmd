@@ -1,0 +1,483 @@
+---
+title: "A systematic review and meta-analysis of care seeking for diarrheal illness"
+author: "Kirsten E. Wiens, Marissa Miller, Daniel P. Costello, Ashlynn Solomon, ..., Elizabeth C. Lee, Andrew S. Azman"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<br>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      dev=c('png', 'pdf'), fig.path='figures/')
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+```{r preamble, warning = TRUE}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  countrycode, here, lubridate, tidyverse, ggplot2,
+  sf, raster, RColorBrewer, cowplot, kableExtra, flextable
+)
+
+# custom functions
+source(here::here('code', 'utils.R'))
+```
+
+## Draft outline
+
+#### Our primary question is: What proportion of people with diarrhea seek care at a place that they'd likely get counted (i.e., hospital/clinic) when they have diarrhea?
+
+-   Age and sex
+-   Symptoms
+-   Study methods
+-   Urban/rural
+-   How study question is phrased
+-   Study population
+-   Travel distance to health facility\^
+-   Health care state/access (at country level)\^
+-   Density of population to healthcare providers (country)\^
+-   HIC vs LMICs
+
+\^Still need to pull this data
+
+Additional things to consider:
+
+-   Multiple choice questions
+-   How question is phrased
+-   Whether the above characteristics should be covs or strats
+
+#### Our secondary question is: Where else do they seek care?
+
+<br>
+
+```{r load and tidy data}
+
+#  load data
+df <- read.csv(here::here('data', 'extracted_data', 'data_extractions.csv'))
+vars <- read.csv(here::here('data', 'extracted_data', 'data_codebook.csv'))
+
+# set column variable names
+df$Status <- NULL
+if(nrow(vars) != ncol(df)) stop('Codebook does not match extractions. Please check variables.')
+names(df) <- vars$Variable
+
+# filter to primary non-overlapping dataset
+df <- df %>%
+  filter(primary_set == 1)
+
+# format columns
+df <- df %>%
+  # simplify/clarify location description
+  mutate(location_desc = ifelse(location_desc == 'IDP Camp (Internally Displaced Person) or Refugee Camp',
+                                'IDP or Refugee Camp', 
+                                ifelse(location_desc == 'Both', 'Urban and Rural', location_desc))) %>%
+  # add start and end year
+  mutate(sampling_start = as.Date(sampling_start, format = "%m/%d/%Y"),
+         sampling_end = as.Date(sampling_end, format = "%m/%d/%Y"),
+         TL = year(sampling_start),
+         TR = year(sampling_end)) %>%
+  # remove variable name text in parentheses and set factor levels
+  mutate(sampling_method = gsub('\\s*\\([^\\)]+\\)', '', sampling_method),
+         study_type = factor(study_type, 
+                             levels = c('Survey', 'Surveillance',
+                                        'Intervention', 'Case control')),
+         sampling_method = factor(sampling_method, 
+                                  levels = c('Cluster', 'Systematic', 
+                                             'Simple random', 'All cases or households',
+                                             'Stratified', 'Other')),
+         location_desc = factor(location_desc, 
+                                levels = c('Rural', 'Urban', 'Urban and Rural', 
+                                           'Peri-Urban', 'Urban and Peri-Urban', 'IDP or Refugee Camp'))) %>%
+  # region as defined by World Bank Development Indicators
+  mutate(region = countrycode(country_iso3, 
+                              origin = 'iso3c', 
+                              destination = 'region')) %>%
+  mutate(region = ifelse(region != 'Sub-Saharan Africa',
+                         region, 
+                         countrycode(country_iso3, 
+                                     origin = 'iso3c', 
+                                     destination = 'region23'))) %>%
+  # whether or not an outbreak description was provided
+  mutate(outbreak_desc = ifelse(outbreak == 'No outbreak description' | outbreak == 'Pre outbreak', 0, 1))
+
+# main dataset is whether people DID seek care; also create df for when people WOULD seek care
+df_would <- df %>%
+  filter(!is.na(n_would_survey)) %>%
+  dplyr::select(-n_did_survey, -n_did)
+
+df <- df %>%
+  filter(!is.na(n_did_survey)) %>%
+  dplyr::select(-n_would_survey, -n_would)
+```
+
+```{r aggregate stratifications}
+# # variables to keep
+# keep_vars <- c('study_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'outbreak_desc',
+#                'sampling_start', 'sampling_end', 'TL', 'TR', 'region', 'country_iso3', 'admin0', 
+#                'mult_choice', 'time_care', 'self_or_child', 'recall_time', 'location_type')
+# 
+# # aggregate stratifications by taking weighted mean
+# # this will be our main analysis dataset
+# df <- df %>%
+#   group_by_at(keep_vars) %>%
+#   summarize(prop_five = ifelse(!is.na(n_would_survey), weighted.mean(prop_five, n_would_survey, na.rm=T),
+#                                ifelse(!is.na(n_did_survey), weighted.mean(prop_five, n_did_survey, na.rm=T, NA))),
+#             #TODO: need to think carefully about how these should be aggregated, given mult choice, strats, entry_ids, etc.
+#             # stick with entry_id for now for the data plots
+#             n_cases_tested = sum(n_cases_tested, na.rm = TRUE)) %>%
+#   ungroup()
+```
+
+## Systematic review
+
+### Fig 1. PRISMA diagram
+
+![PRISMA diagram.](PRISMA-20231218.png)
+
+<br>
+
+## Data
+
+**Note:** Unless otherwise noted, the data presented below represents 161 studies (381 stratified observation entries) in the **primary, non-overlapping** dataset that asked study participants whether or not the **DID** seek care for a past diarrheal illness.
+
+We also have information on whether individuals **would** seek care for a hypothetical diarrheal illness from 27 studies (96 stratified observation entries).
+
+### Data coverage by geography
+
+```{r, warning= FALSE}
+# shapefile
+shp <- st_read(here::here('data/shapefiles/ne_50m_admin_0_countries/ne_50m_admin_0_countries.shp'), quiet = TRUE)
+shp <- shp %>% dplyr::select(ISO_A3, NAME_SORT, geometry)
+```
+
+```{r match-polygons}
+# match each entry_id to a polygon
+shp_list <- readRDS(here::here("data", "shapefiles", "shp_list.RData"))
+# shp_list contains three shapefiles (shp_admin0, shp_admin1, shp_admin2), e.g. if the minimal admin level of an entry is 0 (country level), the shapefile can be found in shp_admin0. If an entry contains more than one place, the were separated into different rows, each has its own polygon.
+```
+
+Number of stratified observation entries in the primary dataset at each administrative level by country. Countries with \>10 observations displayed as 10.
+
+```{r figS1, fig.height = 10, fig.width = 7, warning = FALSE}
+data_loc <- df %>% 
+  # select relevant study-period columns
+  dplyr::select(c('study_id', 'entry_id', 'country_iso3',
+                  'admin0', 'admin1', 'admin2', 'admin3', 'place_name')) %>%
+  unique() %>%
+  # only keep location names for lowest admin level
+  mutate(admin0 = ifelse(admin1 == '' & admin2 == '' & admin3 == '', admin0, ''),
+         admin1 = ifelse(admin2 == '' & admin3 == '', admin1, ''),
+         admin2 = ifelse(admin3 == '', admin2, '')) %>%
+  # reshape for counting
+  reshape2::melt(measure.vars = c('admin0', 'admin1', 'admin2', 'admin3'),
+                 id.vars = c('study_id', 'entry_id', 'country_iso3')) %>%
+  # largest administrative level by observation
+  filter(value != '') %>%
+  group_by_at(c('study_id', 'entry_id', 'country_iso3')) %>%
+  summarize(largest_admin = min(as.character(variable))) %>%
+  ungroup() %>%
+  # count observations by admin level
+  count(country_iso3, largest_admin) %>% 
+  rename(variable = largest_admin, observations = n) %>%
+  ungroup()
+
+# plot for each admin level
+figS1 <- list()
+for (i in 0:3) {
+  figS1[[i+1]] <- data_map(data_loc, shp, ad = paste0('admin', i))
+}
+
+cowplot::plot_grid(figS1[[1]], figS1[[2]], figS1[[3]], figS1[[4]],
+                   labels = c('A', 'B', 'C', 'D'),
+                   ncol = 1)
+
+
+# # number at each level
+# data_loc %>%
+#   group_by(variable) %>%
+#   # count observations by admin level
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
+
+# # numbers for Haiti
+# data_loc %>%
+#   filter(country_iso3 == 'HTI') %>%
+#   group_by(variable) %>%
+#   # count observations by admin level
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
+```
+
+<br>
+
+### Data coverage over time
+
+Number of stratified observation entries in the primary dataset within different time periods. Year represents the year sampling was completed. Excludes 6 entries missing study dates.
+
+```{r figS2, fig.height = 10, fig.width = 7}
+# similar to those above, but instead of stratification by admin level, stratify into 4 time periods (before 2000~2004, 2005~2009, 2010~2014, after 2015)
+coverage_time <- df %>%
+  # select relevant study-period columns
+  dplyr::select(study_id, entry_id, country_iso3, sampling_end) %>%
+  unique() %>%
+  mutate(time_period = case_when(sampling_end <= as.Date("2004-12-31") ~ "2000~2004",
+                                 sampling_end > as.Date("2004-12-31") & sampling_end <= as.Date("2009-12-31") ~ "2005~2009",
+                                 sampling_end > as.Date("2009-12-31") & sampling_end <= as.Date("2014-12-31") ~ "2010~2014",
+                                 sampling_end > as.Date("2014-12-31") ~ "2015~2022")) %>%
+  # if multiple sampling periods within a time period, only report one observation
+  dplyr::select(-sampling_end) %>%
+  unique() %>%
+  # if observations span multiple time periods, just report the end of the study period
+  arrange(time_period) %>%
+  group_by_at(c('study_id', 'entry_id', 'country_iso3')) %>% 
+  mutate(num_dups = n(), 
+         dup_id = row_number()) %>% 
+  ungroup() %>% 
+  mutate(is_duplicated = dup_id > 1) %>%
+  filter(is_duplicated==FALSE) %>%
+  dplyr::select(-is_duplicated) %>%
+  # count by time (study ending time)
+  count(country_iso3, time_period) %>% 
+  rename(variable = time_period, observations = n) %>%
+  ungroup()
+
+# plot for each time period
+figS2 <- list()
+for (i in c("2000~2004", "2005~2009", "2010~2014", "2015~2022")) {
+  figS2[[i]] <- data_map(coverage_time, shp, ad = i)
+}
+
+cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
+                   labels = c('A', 'B', 'C', 'D'),
+                   ncol = 1)
+
+# # number at each level
+# coverage_time %>%
+#   group_by(variable) %>%
+#   # count observations by time period
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
+
+# # numbers for Haiti
+# coverage_time %>%
+#   filter(country_iso3 == 'HTI') %>%
+#   group_by(variable) %>%
+#   # count observations by time period
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
+```
+
+<br>
+
+### Study (entry_id) characteristics
+
+```{r table1}
+
+# prep variables for table
+sd <- df %>% 
+  # format variables
+  mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
+  # sum up number of tests and sample sizes by observation
+  dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'outbreak_desc', 'location_desc')) %>%
+  unique() %>%
+  dplyr::select(-entry_id) 
+
+# summarize and make table
+sd %>%
+  summarize_cats() %>%
+  arrange(desc(variable), desc(Percent)) %>%
+  mutate(variable = ifelse(variable == 'Pop cat', 'Study population',
+                           ifelse(variable == 'Case cat', 'Case definition',
+                                  ifelse(variable == 'Outbreak desc', 'Outbreak described', variable)))) %>%
+  pretty_table()
+
+# sd %>%
+#   summarize_cats() %>%
+#   flextable() %>%
+#   save_as_docx(path = here::here('code/tables/table1.docx'))
+```
+
+<br>
+
+### Care seeking questions
+
+**Note:** "Other" regarding self or child almost always refers to all household members, or is a combination of self and child that we could not disaggregate.
+
+```{r table2}
+
+# prep variables for table
+cq <- df %>% 
+  # format variables
+  mutate(recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time == 15, '14-15 days',
+                                          ifelse(recall_time > 15 & recall_time <= 30, '27-30 days', 
+                                                 ifelse(recall_time > 30 & recall_time <= 90, '42-90 days',
+                                                        ifelse(recall_time > 90, '170-365 days', 'Unknown'))))),
+         mult_choice = ifelse(mult_choice == 1, 'Yes', 'No')) %>%
+  # sum up number of tests and sample sizes by observation
+  dplyr::select(c('entry_id', 'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
+  unique() %>%
+  dplyr::select(-entry_id) 
+
+# summarize and make table
+cq %>%
+  summarize_cats() %>%
+  arrange(desc(variable), desc(Percent)) %>%
+  pretty_table()
+
+# cq %>%
+#   summarize_cats() %>%
+#   flextable() %>%
+#   save_as_docx(path = here::here('code/tables/table1.docx'))
+```
+
+<br>
+
+### Proportion seeking care at a hospital or clinic
+
+**Note:** This excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific).
+
+This also excludes multiple choice questions (as these can sum to > 1 for studies that report both general hospital and public hospital).
+
+<br>
+
+#### By study (entry_id) characteristics
+
+```{r}
+df_hosp <- df %>%
+  # remove multiple choice questions (for now) %>%
+  filter(mult_choice == 0) %>%
+  # filter to hospital/clinic (not private)
+  filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
+  # aggregate care seeking
+  group_by_at(c('entry_id', 'entry_desc', 'study_type', 'sampling_method', 'pop_cat', 
+                'case_cat', 'outbreak_desc', 'location_desc')) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = sum(n_did)) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(prop_seek = n_did/n_did_survey) %>%
+  # format variables
+  mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         case_cat = ifelse(case_cat == 'Giardiasis', 'Other (list etiologies in notes)', case_cat),
+         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+                                         'Street dweller', 'University student'), 'Other', pop_cat))
+```
+
+```{r}
+f2a <- plot_seekprop(df_hosp, 'study_type', num_colors=4)
+
+# df_hosp %>%
+#   group_by(study_type) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+
+f2c <- plot_seekprop(df_hosp, 'sampling_method', num_colors=6)
+
+# df_hosp %>%
+#   group_by(sampling_method) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+
+# # overall
+# df_hosp %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f2b <- plot_seekprop(df_hosp, 'outbreak_desc', num_colors=2) +
+  ggtitle('Study describes an outbreak')
+
+# df_hosp %>%
+#   group_by(outbreak_desc) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f2d <- plot_seekprop(df_hosp, 'location_desc', num_colors=6) +
+  ggtitle('Location description')
+
+# df_hosp %>%
+#   group_by(location_desc) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r fig2, fig.width = 9, fig.height = 4}
+cowplot::plot_grid(f2a, f2b,
+                   labels = c('A', 'B'),
+                   nrow = 1, rel_widths = c(0.6, 0.4))
+
+cowplot::plot_grid(f2c, labels = c('C'))
+cowplot::plot_grid(f2d, labels = c('D'))
+```
+
+<br>
+
+#### By case definition and study population categories
+
+```{r}
+f3a <- plot_seekprop(df_hosp, 'pop_cat', num_colors=8) +
+  ggtitle('Study population / respondent')
+
+# cp %>%
+#   group_by(pop_cat) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f3b <- plot_seekprop(df_hosp, 'case_cat', num_colors=8) +
+  ggtitle('Diarrhea case definition')
+
+# cp %>%
+#   group_by(case_cat) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r fig3, fig.width = 9, fig.height = 9}
+cowplot::plot_grid(f3a, f3b,
+                   labels = c('A', 'B'),
+                   nrow = 2)
+```
+
+<br>
