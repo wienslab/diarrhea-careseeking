@@ -101,7 +101,9 @@ df <- df %>%
                                      origin = 'iso3c', 
                                      destination = 'region23'))) %>%
   # whether or not an outbreak description was provided
-  mutate(outbreak_desc = ifelse(outbreak == 'No outbreak description' | outbreak == 'Pre outbreak', 0, 1))
+  mutate(outbreak_desc = ifelse(outbreak == 'No outbreak description' | outbreak == 'Pre outbreak', 0, 1)) %>%
+  # set "other" to "any care" for timing (based on descriptions in notes)
+  mutate(time_care = ifelse(time_care == 'Other (write in notes)', 'Any care', time_care))
 
 # main dataset is whether people DID seek care; also create df for when people WOULD seek care
 df_would <- df %>%
@@ -344,22 +346,19 @@ cq %>%
 
 **Note:** This excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific).
 
-This also excludes multiple choice questions (as these can sum to > 1 for studies that report both general hospital and public hospital).
-
 <br>
 
 #### By study (entry_id) characteristics
 
 ```{r}
 df_hosp <- df %>%
-  # remove multiple choice questions (for now) %>%
-  filter(mult_choice == 0) %>%
   # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking
   group_by_at(c('entry_id', 'entry_desc', 'study_type', 'sampling_method', 'pop_cat', 
-                'case_cat', 'outbreak_desc', 'location_desc')) %>%
-  summarize(n_did_survey = n_did_survey,
+                'case_cat', 'outbreak_desc', 'location_desc', 
+                'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
+  summarize(n_did_survey = sum(n_did_survey),
             n_did = sum(n_did)) %>%
   ungroup() %>%
   unique() %>%
@@ -367,9 +366,18 @@ df_hosp <- df %>%
   mutate(prop_seek = n_did/n_did_survey) %>%
   # format variables
   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
          case_cat = ifelse(case_cat == 'Giardiasis', 'Other (list etiologies in notes)', case_cat),
          pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
-                                         'Street dweller', 'University student'), 'Other', pop_cat))
+                                         'Street dweller', 'University student'), 'Other', pop_cat),
+         recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time == 15, '14-15 days',
+                                          ifelse(recall_time > 15 & recall_time <= 30, '27-30 days', 
+                                                 ifelse(recall_time > 30 & recall_time <= 90, '42-90 days',
+                                                        ifelse(recall_time > 90, '170-365 days', 'Unknown'))))),
+         recall_time = factor(recall_time, 
+                              levels = c('2-7 days', '14-15 days', '27-30 days', '42-90 days', '170-365 days', 'Unknown')))
+         
 ```
 
 ```{r}
@@ -442,15 +450,11 @@ cowplot::plot_grid(f2c, labels = c('C'))
 cowplot::plot_grid(f2d, labels = c('D'))
 ```
 
-<br>
-
-#### By case definition and study population categories
-
 ```{r}
-f3a <- plot_seekprop(df_hosp, 'pop_cat', num_colors=8) +
+f2e <- plot_seekprop(df_hosp, 'pop_cat', num_colors=8) +
   ggtitle('Study population / respondent')
 
-# cp %>%
+# df_hosp %>%
 #   group_by(pop_cat) %>%
 #   summarize(median = median(prop_seek),
 #             N = length(prop_seek),
@@ -461,10 +465,10 @@ f3a <- plot_seekprop(df_hosp, 'pop_cat', num_colors=8) +
 ```
 
 ```{r}
-f3b <- plot_seekprop(df_hosp, 'case_cat', num_colors=8) +
+f2f <- plot_seekprop(df_hosp, 'case_cat', num_colors=8) +
   ggtitle('Diarrhea case definition')
 
-# cp %>%
+# df_hosp %>%
 #   group_by(case_cat) %>%
 #   summarize(median = median(prop_seek),
 #             N = length(prop_seek),
@@ -474,10 +478,109 @@ f3b <- plot_seekprop(df_hosp, 'case_cat', num_colors=8) +
 #   pretty_table()
 ```
 
-```{r fig3, fig.width = 9, fig.height = 9}
-cowplot::plot_grid(f3a, f3b,
-                   labels = c('A', 'B'),
+```{r fig2-2, fig.width = 9, fig.height = 9}
+cowplot::plot_grid(f2e, f2f,
+                   labels = c('E', 'F'),
                    nrow = 2)
 ```
 
 <br>
+
+#### By type of care seeking questions
+
+```{r}
+f3a <- plot_seekprop(df_hosp, 'time_care', num_colors=3) +
+  ggtitle('Timing of care seeking')
+
+# df_hosp %>%
+#   group_by(time_care) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f3b <- plot_seekprop(df_hosp, 'self_or_child', num_colors=3) +
+  ggtitle('Self, child, or other/combination')
+
+# df_hosp %>%
+#   group_by(self_or_child) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f3c <- plot_seekprop(df_hosp, 'recall_time', num_colors=5) +
+  ggtitle('Recall period')
+
+# df_hosp %>%
+#   group_by(recall_time) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r}
+f3d <- plot_seekprop(df_hosp, 'mult_choice', num_colors=2) +
+  ggtitle('Multiple choice')
+
+# df_hosp %>%
+#   group_by(mult_choice) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r fig3, fig.width = 9, fig.height = 4}
+cowplot::plot_grid(f3a, f3b,
+                   labels = c('A', 'B'),
+                   nrow = 1)
+
+cowplot::plot_grid(f3c, f3d,
+                   labels = c('C', 'D'),
+                   nrow = 1, rel_widths = c(0.64, 0.35))
+```
+
+<br>
+
+Methods to adjust for:
+- study type
+- timing of care seeking
+- recall period
+- (maybe) case definition
+- (maybe) study population
+
+Stratify by:
+- case definition
+- study population
+
+Covariates to examine:
+- outbreak
+- urban/rural
+
+Sub-analyses:
+- age
+- sex
+- severity
+- pre-post intervention?
+
+Sensitivity analyses:
+- study methods not included in main analysis
+- study quality strats
+
+Supplementary analyses:
+- would you seek care
+- assumptions about single-choice answers and where else people may seek care
