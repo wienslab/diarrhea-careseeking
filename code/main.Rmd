@@ -346,6 +346,8 @@ cq %>%
 
 **Note:** This excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific).
 
+*For multiple choice questions where there is more than one category of hospital/clinic, we take the largest proportion that sought care across them. This is not entirely accurate but the best we can do here. May want to return to this.*
+
 <br>
 
 #### By study (entry_id) characteristics
@@ -358,8 +360,8 @@ df_hosp <- df %>%
   group_by_at(c('entry_id', 'entry_desc', 'study_type', 'sampling_method', 'pop_cat', 
                 'case_cat', 'outbreak_desc', 'location_desc', 
                 'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
-  summarize(n_did_survey = sum(n_did_survey),
-            n_did = sum(n_did)) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
   unique() %>%
   # proportion seeking care
