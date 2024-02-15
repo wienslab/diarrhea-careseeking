@@ -361,46 +361,20 @@ load_incidence <- function(df){
 }
 
 
-#' @title Run Stan analysis
-#' @description Runs the Stan meta-analysis model
-#'
-#' @param model_script Stan model script
-#' @param dat_suspected number of suspected cases tested by test
-#' @param dat_confirmed number of suspected cases confirmed by test
-#' @param dat_covars covariates by study, wide format
-#' @param re_ids vector of ids corresponding to the variable to use as a random effect
-#' @param test_ids vector of ids corresponding to which test was used
-#' @param run_id unique id for run, will be in saved file name
-#' @param coef_eqn formula in character format expressing the probability of positivity on the logit scale
-#' @param sens_draws vector of posterior draws of sensitivity from latent class analysis
-#' @param spec_draws vector of posterior draws of specificity from latent class analysis
-#' @param redo redo fit or load pre-computed posteriors if available
-#' @param chains number of chains to run in sampling
-#' 
-#' @return a list with parameter posteriors and results
+# Run Stan analysis
 run_analysis_stan <- function(model_script,
-                              dat_suspected,
-                              dat_confirmed,
+                              dat_surveyed,
+                              dat_soughtcare,
                               dat_covars,
                               re_ids,
                               test_ids,
                               run_id,
                               coef_eqn,
-                              sens_draws,
-                              spec_draws,
                               redo,
-                              chains,
-                              adjust_tests,
                               ...) {
   
   # Set analysis data
-  dat_suspected <- as_tibble(dat_suspected)
-  dat_confirmed <- as_tibble(dat_confirmed)
   dat_covars <- as_tibble(dat_covars)
-
-  # Get test names and number
-  lab_tests <- colnames(sens_draws)
-  n_tests <- length(lab_tests)
   
   # Set model matrix
   X <- model.matrix(as.formula(paste("~", coef_eqn)), data = dat_covars)
@@ -409,7 +383,7 @@ run_analysis_stan <- function(model_script,
   u_re_ids <- unique(re_ids)
   re_ids <- map_dbl(re_ids, ~which(u_re_ids == .))
   
-  # name of the stan output file 
+  # name of the Stan output file 
   # just in case results directory isn't created already
   if(!dir.exists(here::here("data", "generated_data", "model_fits"))){
     dir.create(here::here("data", "generated_data", "model_fits"))
@@ -422,82 +396,25 @@ run_analysis_stan <- function(model_script,
     
     mod <- cmdstanr::cmdstan_model(model_script)
     
-    # Run stan model with adjustments for test accuracy
-    if (adjust_tests) {
-      
-      stan_est <- mod$sample(data = list(
+    # Run Stan model
+     stan_est <- mod$sample(data = list(
         N_obs = length(u_re_ids), # random effect on each observation
-        N_obs_tests = nrow(dat_suspected),
-        J = n_tests,
         N_re = length(u_re_ids), # random effect on each observation
         re = re_ids,
         p_vars = ncol(X),
         X = X,
-        num_test = dat_suspected$n_cases_tested,
-        num_pos = dat_confirmed$n_cases_positive,
-        # number of studies that used each type of test
-        N_culture = length(which(test_ids == 1)), 
-        N_pcr = length(which(test_ids == 2)),
-        N_rdt = length(which(test_ids == 3)),
-        # row IDs for the dataset that is long by test
-        culture_id_long = which(test_ids == 1),
-        pcr_id_long = which(test_ids == 2),
-        rdt_id_long = which(test_ids == 3),
-        # row IDs for the dataset that is wide by test
-        culture_id_wide = which(!is.na(dat_covs$Culture)),
-        pcr_id_wide = which(!is.na(dat_covs$PCR)),
-        rdt_id_wide = which(!is.na(dat_covs$RDT)),
-        # draws of sensitivity and specificity
-        M = nrow(sens_draws),
-        sens = sens_draws,
-        spec = spec_draws
+        num_survey = dat_surveyed,
+        num_sought = dat_soughtcare
       ),
       chains = 4,
       parallel_chains = 4,
-      iter_sampling = 2000,
-      iter_warmup = 1000,
+      iter_sampling = 1000,
+      iter_warmup = 500,
       step_size = 0.01,
       adapt_delta = 0.99,
       max_treedepth = 15,
-      refresh = 100
+      refresh = 50
       )
-    }
-    
-    # Run stan model without adjustments for test accuracy
-    if (!adjust_tests) {
-      
-      stan_est <- mod$sample(data = list(
-        N_obs = length(u_re_ids), # random effect on each observation
-        N_obs_tests = nrow(dat_suspected),
-        N_re = length(u_re_ids), # random effect on each observation
-        re = re_ids,
-        p_vars = ncol(X),
-        X = X,
-        num_test = dat_suspected$n_cases_tested,
-        num_pos = dat_confirmed$n_cases_positive,
-        # number of studies that used each type of test
-        N_culture = length(which(test_ids == 1)), 
-        N_pcr = length(which(test_ids == 2)),
-        N_rdt = length(which(test_ids == 3)),
-        # row IDs for the dataset that is long by test
-        culture_id_long = which(test_ids == 1),
-        pcr_id_long = which(test_ids == 2),
-        rdt_id_long = which(test_ids == 3),
-        # row IDs for the dataset that is wide by test
-        culture_id_wide = which(!is.na(dat_covs$Culture)),
-        pcr_id_wide = which(!is.na(dat_covs$PCR)),
-        rdt_id_wide = which(!is.na(dat_covs$RDT))
-      ),
-      chains = 4,
-      parallel_chains = 4,
-      iter_sampling = 2000,
-      iter_warmup = 1000,
-      step_size = 0.01,
-      adapt_delta = 0.99,
-      max_treedepth = 15,
-      refresh = 100
-      )
-    }
     
     # print summary
     stan_est$cmdstan_summary()
@@ -529,10 +446,8 @@ run_analysis_stan <- function(model_script,
   res <- list(
     beta = cov_tbl,
     model_mtx = X,
-    num_test = dat_suspected$n_cases_tested,
-    num_pos = dat_confirmed$n_cases_positive,
-    sens = sens_draws,
-    spec = spec_draws,
+    num_survey = dat_surveyed,
+    num_sought = dat_soughtcare,
     p = p_tbl,
     e = e_tbl,
     sigma_re = draws['sigma_re'],

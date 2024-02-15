@@ -1,5 +1,13 @@
+# specific files
+code/Diarrhea_Care_Behavior.html
+code/PRISMA-20231218.png
+code/figures/
+code/main.html
+data/shapefiles/
+
 # Git Config File
 .gitconfig
+.gitignore
 
 # DSstore files
 .DS_Store
