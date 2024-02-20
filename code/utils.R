@@ -501,8 +501,7 @@ obs_by_cat <- function(dat, covs) {
   
   # get study observations
   dat <- dat %>%
-    dplyr::select(c('study_id', 'country_iso3', 'cases_min_age_bin',
-                    'sampling_quality', 'surveillance_type')) %>%
+    dplyr::select_at(c('study_id', 'entry_id', 'country_iso3', covs)) %>%
     unique()
 
   # count number by covariates
@@ -515,16 +514,6 @@ obs_by_cat <- function(dat, covs) {
   props <- props %>%
     dplyr::select(c(sort(covs), 'n', 'prop'))
   
-  # convert to 0/1 values
-  if ('sampling_quality' %in% covs) {
-  props <- props %>%
-    mutate(sampling_quality = ifelse(sampling_quality == 'High', 0, 1))
-  }
-  if ('surveillance_type' %in% covs) {
-    props <- props %>%
-      mutate(surveillance_type = ifelse(surveillance_type == 'Outbreak', 1, 0))
-  }
-  
   return(props)
 }
 
@@ -534,11 +523,11 @@ obs_by_cat <- function(dat, covs) {
 # assuming that the proportion of all potential studies that use different methods
 # and case definitions match the proportions we found in the systematic review
 # but we do not include the post-stratified results because they are not meaningful
-stratify <- function(mod, cov_cats) {
+stratify <- function(mod, case_strat, cov_cats) {
   
   # load model draws
-  draws <- readRDS(here::here('data', 'generated_data', 'adjusted_positivity_rates',
-                              paste0('posrate-', mod, '.rds')))
+  draws <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates',
+                              paste0('propseek-', case_strat, '-', mod, '.rds')))
   
   # extract parameters
   beta <- cbind(draws[grep('alpha', names(draws))],
@@ -549,11 +538,8 @@ stratify <- function(mod, cov_cats) {
   # covariate matrix
   mod_eqns <- list(
     'mod1' = '1',
-    'mod1-unadj' = '1',
-    'mod1-sa' = '1',
-    'mod2' = 'sampling_quality + cases_min_age_bin',
-    'mod3' = 'sampling_quality + cases_min_age_bin + surveillance_type',
-    'mod4' = 'sampling_quality + surveillance_type'
+    'mod2' = 'study_type + time_care + recall_time + mult_choice + pop_cat',
+    'mod3' = 'study_type + time_care + recall_time + mult_choice + outbreak_desc + location_desc'
   )
   coef_eqn <- mod_eqns[[mod]]
   cat_mat <- cov_cats %>%

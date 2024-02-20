@@ -18,7 +18,7 @@ knitr::opts_knit$set(root.dir = here::here())
 ```{r preamble, warning = TRUE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode, here, lubridate, tidyverse, ggplot2,
+  countrycode, here, lubridate, tidyverse, ggplot2, doParallel, boot,
   sf, raster, RColorBrewer, cowplot, kableExtra, flextable
 )
 
@@ -572,16 +572,27 @@ v. Other etiologies or symptoms
 Within each stratification, we build three generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
 1. Unadjusted
-2. Adjusted for study methodology:
+2. Adjusted for study methodology and population:
     + study type
     + timing of care seeking
     + recall period
-    + study population
     + multiple choice questions
+    + study population
+
     
-3. Adjusted for study methodology and contextual factors that could influence care seeking:
+3. Adjusted for study methodology and contextual factors:
+    + study type
+    + timing of care seeking
+    + recall period
+    + multiple choice questions
     + outbreak
     + urban/rural
+    
+
+*NB / TODO*:
+* Before building models 2 and 3, we need to run univariate analyses. Results below just represent unadjusted, model 1 results for now.
+* Also need to examine why proportion seeking care is so sensitive to priors. May need to reconstruct this model as well.
+* Structure this code so it requires less copy/paste (will get cumbersome with stratifications and sub-analyses).
 
 
 ```{r prep for Stan}
@@ -606,8 +617,8 @@ if (stan_redo) {
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'study_type + time_care + recall_time + pop_cat',
-  'mod3' = 'outbreak_desc + location_desc'
+  'mod2' = 'study_type + time_care + recall_time + mult_choice + pop_cat',
+  'mod3' = 'study_type + time_care + recall_time + mult_choice + outbreak_desc + location_desc'
 )
 ```
 
@@ -648,7 +659,7 @@ sr_dat <- df %>%
 
 ### i. Diarrhea
 
-```{r}
+```{r run Stan models}
 # subset input data to diarrhea case definition
 stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
 case_strat <- 'dia'
@@ -669,7 +680,7 @@ stan_run_id <- paste0(case_strat, '-', stan_model,
 
 # file to save to
 out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
-                           paste0('posrate-', stan_run_id, '.rds'))
+                           paste0('propseek-', stan_run_id, '.rds'))
 
 if (!file.exists(out_est_file) | stan_redo) {
   seekrate <- run_analysis_stan(
@@ -710,7 +721,7 @@ stan_run_id <- paste0(case_strat, '-', stan_model,
 
 # file to save to
 out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
-                           paste0('posrate-', stan_run_id, '.rds'))
+                           paste0('propseek-', stan_run_id, '.rds'))
 
 if (!file.exists(out_est_file) | stan_redo) {
   seekrate <- run_analysis_stan(
@@ -751,7 +762,7 @@ stan_run_id <- paste0(case_strat, '-', stan_model,
 
 # file to save to
 out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
-                           paste0('posrate-', stan_run_id, '.rds'))
+                           paste0('propseek-', stan_run_id, '.rds'))
 
 if (!file.exists(out_est_file) | stan_redo) {
   seekrate <- run_analysis_stan(
@@ -780,12 +791,243 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```
 
+```{r data by covariate strata}
+strata1_dat <- stan_dat %>%
+  group_by(study_type, time_care, recall_time, mult_choice, pop_cat) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(study_type, time_care, recall_time, mult_choice, pop_cat)
+
+strata2_dat <- stan_dat %>%
+  group_by(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc)
+```
+
+```{r combine model results}
+mod_ests <- data.frame(run_id = NA,
+                      stan_id = NA,
+                      mean = NA,
+                      lower = NA,
+                      upper = NA,
+                      row.names = NULL)
+
+file_names <- list.files(here::here('data', 'generated_data', 'care_seeking_estimates'))
+file_names <- file_names[grep('dia', file_names)]
+
+for (i in file_names) {
+  
+  propseek <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', i))
+  model_name <- gsub('propseek-|\\.rds', '', i)
+  
+  # save alpha results
+  mod_ests <- rbind(mod_ests,
+                   data.frame(run_id = model_name,
+                              stan_id = 'alpha',
+                              mean = mean(inv.logit(propseek$alpha$alpha), na.rm = T),
+                              lower = quantile(inv.logit(propseek$alpha$alpha), probs = .025, na.rm = T),
+                              upper = quantile(inv.logit(propseek$alpha$alpha), probs = .975, na.rm = T),
+                              row.names = NULL
+                              )
+                   )
+  
+  # save beta coefficients
+  for (c in names(propseek$beta)) {
+    if (c != '(Intercept)') {
+      mod_ests <- rbind(mod_ests,
+                       data.frame(
+                         run_id = model_name,
+                         stan_id = c,
+                         mean = mean(propseek[['beta']][[c]], na.rm = T),
+                         lower = quantile(propseek[['beta']][[c]], probs = .025, na.rm = T),
+                         upper = quantile(propseek[['beta']][[c]], probs = .975, na.rm = T),
+                         row.names = NULL
+                       )
+      )
+    }
+  }
+  
+}
+
+```
+
+```{r stratify}
+
+# get the proportion of studies by covariate categories
+# note: the function integrates over RE, post-stratifies, and stratifies, 
+#       which is why we pull these, but in the paper we only present stratified results 
+#       because they are more meaningful
+
+cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice', 
+                                    'pop_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice',
+                                    'outbreak_desc', 'location_desc'))
+
+# get overall Vc proportion positive for unadjusted model, integrating over random effects
+prop_mod1 <- stratify('mod1', 'dia', data.frame(alpha = 1, n = 1, prop = 1))[[1]]
+
+# # post-stratify to get overall Vc proportion positive by strata
+# prop_strat_mod2 <- stratify('mod2', 'dia', cats_mod2)[[2]]
+# prop_strat_mod3 <- stratify('mod3', 'dia', cats_mod3)[[2]]
+
+# save unadjusted post-stratified proportion to mod_est data frame
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'dia-mod1',
+                             stan_id = 'prop',
+                             mean = mean(prop_mod1$pos, na.rm = T),
+                             lower = quantile(prop_mod1$pos, probs = .025, na.rm = T),
+                             upper = quantile(prop_mod1$pos, probs = .975, na.rm = T),
+                             row.names = NULL
+                             )
+                  )
+
+# Commented code below until we run univariate models, decide on model configurations, etc.
+
+# # stratifications below each correspond to:
+# #     study_type = 'Survey'
+# #     time_care = 'Any care'
+# #     recall_time = 'under30'
+# #     mult_choice = 0
+# 
+# prop_mod2_sub <- prop_strat_mod2 %>%
+#   filter(study_typeSurvey == 1 & recall_timeunder30 == 1 & mult_choice == 0 &
+#            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+# 
+# prop_mod3_sub <- prop_strat_mod3 %>%
+#   filter(study_typeSurvey == 1 & recall_timeunder30 == 1 & mult_choice == 0 &
+#            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+# 
+# # save estimates for each study population
+# prop_mod2_sub <- prop_mod2_sub %>%
+#   select_at(names(prop_mod2_sub)[grep("mean|lower|upper|pop_cat", names(prop_mod2_sub))])
+# 
+# pop_names <- names(prop_mod2_sub)[grep("pop_cat", names(prop_mod2_sub))] 
+# pop_names <- gsub('pop_cat', '', pop_names)
+# 
+# mod_ests <- rbind(mod_ests,
+#                   data.frame(run_id = c('Caregiver', pop_names),
+#                              stan_id = rep('prop', nrow(prop_mod2_sub)),
+#                              mean = prop_mod2_sub$mean,
+#                              lower = prop_mod2_sub$lower,
+#                              upper = prop_mod2_sub$upper,
+#                              row.names = NULL
+#                              )
+#                   )
+# 
+# # save estimates for urban, non-outbreak
+# row_id <- which(prop_mod3_sub$location_descUrban==1 & prop_mod3_sub$location_descRural==0 & prop_mod3_sub$outbreak_desc==0)
+# mod_ests <- rbind(mod_ests,
+#                   data.frame(run_id = 'Urban non-outbreak',
+#                              stan_id = 'prop',
+#                              mean = prop_mod3_sub[row_id, 'mean'],
+#                              lower = prop_mod3_sub[row_id, 'lower'],
+#                              upper = prop_mod3_sub[row_id, 'upper'],
+#                              row.names = NULL
+#                              )
+#                   )
+# 
+# # save estimates for rural, non-outbreak
+# row_id <- which(prop_mod3_sub$location_descUrban==0 & prop_mod3_sub$location_descRural==1 & prop_mod3_sub$outbreak_desc==0)
+# mod_ests <- rbind(mod_ests,
+#                   data.frame(run_id = 'Rural non-outbreak',
+#                              stan_id = 'prop',
+#                              mean = prop_mod3_sub[row_id, 'mean'],
+#                              lower = prop_mod3_sub[row_id, 'lower'],
+#                              upper = prop_mod3_sub[row_id, 'upper'],
+#                              row.names = NULL
+#                              )
+#                   )
+# 
+# # save estimates for urban, outbreak
+# row_id <- which(prop_mod3_sub$location_descUrban==1 & prop_mod3_sub$location_descRural==0 & prop_mod3_sub$outbreak_desc==1)
+# mod_ests <- rbind(mod_ests,
+#                   data.frame(run_id = 'Urban outbreak',
+#                              stan_id = 'prop',
+#                              mean = prop_mod3_sub[row_id, 'mean'],
+#                              lower = prop_mod3_sub[row_id, 'lower'],
+#                              upper = prop_mod3_sub[row_id, 'upper'],
+#                              row.names = NULL
+#                              )
+#                   )
+# 
+# # save estimates for rural, outbreak
+# row_id <- which(prop_mod3_sub$location_descUrban==0 & prop_mod3_sub$location_descRural==1 & prop_mod3_sub$outbreak_desc==1)
+# mod_ests <- rbind(mod_ests,
+#                   data.frame(run_id = 'Rural outbreak',
+#                              stan_id = 'prop',
+#                              mean = prop_mod3_sub[row_id, 'mean'],
+#                              lower = prop_mod3_sub[row_id, 'lower'],
+#                              upper = prop_mod3_sub[row_id, 'upper'],
+#                              row.names = NULL
+#                              )
+#                   )
+
+# tidy results
+mod_ests <- mod_ests %>%
+  drop_na() %>%
+  mutate(mean=ifelse(stan_id == 'prop', round(mean*100,1), mean),
+         lower=ifelse(stan_id == 'prop', round(lower*100,1), lower),
+         upper=ifelse(stan_id == 'prop', round(upper*100,1), upper))
+```
+
+#### Posterior distributions of the proportion of people seeking care
+
+```{r figS4, fig.width=7, fig.height=4}
+# distributions of alpha
+propseek1 <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-dia-mod1.rds'))
+
+s4aL <- plot_prior_post(propseek1$alpha$alpha, 
+                'logit(global intercept)',
+                arg1=0, arg2=5, dprior='dnorm') +
+  ggtitle('Unadjusted')
 
 
+# distributions of the proportion seeking care
+s4aR <- ggplot() +
+  geom_histogram(aes(prop_mod1$pos))+
+  xlim(c(0,1)) +
+  theme_classic() +
+  xlab('Proportion that sought care') + ggtitle('  ')
 
 
+# plot
+cowplot::plot_grid(s4aL, s4aR,
+                   labels = c('A', ''), ncol = 2)
+```
 
+<br>
 
+#### Estimated proportion that seek care
+
+```{r tabS4}
+# mean adjusted proportion positive
+pr2 <- mod_ests %>%
+  filter(run_id %in% c('dia-mod1'), 
+         stan_id == 'prop') %>%
+  arrange(run_id) %>%
+  dplyr::select(lower, mean, upper)
+
+# mean adjusted proportion positive
+pr2 <- pr2 %>%
+  mutate(variable = c('Unadjusted')) %>%
+  mutate(variable = factor(variable, levels = c('Unadjusted')))
+
+# table S4
+tabS4 <- data.frame('Version' = c('Unadjusted'),
+                    'Proportion' = paste(pr2[,2],'(',pr2[,1],'-',pr2[,3],')'))
+
+names(tabS4) <- c('Version', 'Proportion (%)')
+pretty_table(tabS4)
+
+# tabS4 %>%
+#   flextable() %>%
+#   save_as_docx(path = here::here('code/tables/tableS4.docx'))
+```
+
+<br>
 
 ## Additional things to consider
 
