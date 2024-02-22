@@ -557,43 +557,34 @@ cowplot::plot_grid(f3c, f3d,
 
 <br>
 
-
-
 ## Preliminary analysis
 
 Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, we stratify the analysis by case definition to estimate the proportion that seek care for:
 
-i. Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
+i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
 ii. Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
 iii. Cholera (acute watery diarrhea of any severity, including resulting in death)
 iv. Gastroenteritis (diarrhea or vomiting)
-v. Other etiologies or symptoms
+v.  Other etiologies or symptoms
 
 Within each stratification, we build three generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
-1. Unadjusted
-2. Adjusted for study methodology and population:
-    + study type
-    + timing of care seeking
-    + recall period
-    + multiple choice questions
-    + study population
+1.  Unadjusted
+2.  Adjusted for study methodology and population:
+    -   study type
+    -   timing of care seeking
+    -   recall period
+    -   multiple choice questions
+    -   study population
+3.  Adjusted for study methodology and contextual factors:
+    -   study type
+    -   timing of care seeking
+    -   recall period
+    -   multiple choice questions
+    -   outbreak
+    -   urban/rural
 
-    
-3. Adjusted for study methodology and contextual factors:
-    + study type
-    + timing of care seeking
-    + recall period
-    + multiple choice questions
-    + outbreak
-    + urban/rural
-    
-
-*NB / TODO*:
-* Before building models 2 and 3, we need to run univariate analyses. Results below just represent unadjusted, model 1 results for now.
-* Also need to examine why proportion seeking care is so sensitive to priors. May need to reconstruct this model as well.
-* Structure this code so it requires less copy/paste (will get cumbersome with stratifications and sub-analyses).
-
+*NB / TODO*: \* Before building models 2 and 3, we need to run univariate analyses. Results below just represent unadjusted, model 1 results for now. \* Also need to examine why proportion seeking care is so sensitive to priors. May need to reconstruct this model as well. \* Structure this code so it requires less copy/paste (will get cumbersome with stratifications and sub-analyses).
 
 ```{r prep for Stan}
 # use all cores but 2
@@ -655,7 +646,6 @@ sr_dat <- df %>%
   # proportion seeking care
   mutate(prop_seek = n_did/n_did_survey)
 ```
-
 
 ### i. Diarrhea
 
@@ -1031,29 +1021,24 @@ pretty_table(tabS4)
 
 ## Additional things to consider
 
-
 Additional country- or study-level covariates:
 
-* Average travel time to health facilities
-* Policies on free or affordable healthcare
-* Ratio of medical practitioners or CHWs to population
-
+-   Average travel time to health facilities
+-   Policies on free or affordable healthcare
+-   Ratio of medical practitioners or CHWs to population
 
 Sub-analyses:
 
-* age
-* sex
-* severity
-* pre-post intervention
-
+-   age
+-   sex
+-   severity
+-   pre-post intervention
 
 Sensitivity analyses:
 
-* study quality stratifications based on critical appraisals
-
+-   study quality stratifications based on critical appraisals
 
 Supplementary analyses:
 
-* would you seek care
-* assumptions about single-choice answers and where else people may seek care
-
+-   would you seek care
+-   assumptions about single-choice answers and where else people may seek care
