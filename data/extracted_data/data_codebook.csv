@@ -56,7 +56,8 @@ Stratification Checks,Primary dataset,primary_set,0/1,If the data in the row is 
 ,Stratified severity,strat_sev,0/1,if the row was stratified data on diarrhea severity,No
 Overlap Checks,Overlaps checked,over_check,0/1,"If the data reported in the extraction overlapped, it was checked to confirm it does overlap and the appropriate rows were labeled as primary vs not.",Yes
 ,Overlaps Decision,over_dec,text (free form),How does the data overlap and any reasons supporting why study labeled as primary vs not,No
-Critical Appraisal,Is this data internally consistent?,int_consistent,0/1,"Is the data presented in the study is consistent throughout? Specifically, the data related to the proportion of people that seek care outside the home by location",Yes
+Critical Appraisal,Is this data internally consistent?,int_consistent,0/1 or N/A,"Is the data presented in the study is consistent throughout? Specifically, the data related to the proportion of people that seek care outside the home by location",Yes
+,"If n/a, were the main results internally consistent?",int_consistent_ther,0/1,"If the data related to care seeking that we extracted was NOT reported more than once, was other data in the paper consistently reported? Spot check some of the main findings from abstract to start, 0 if any are inconsistent. Does not need to be 100% exhaustive.",No
 ,Was the sample size justified?,sample_justified,0/1,"Did the study report how sample size was calculated? 0 = no, 1 = yes",Yes
 ,Was the non-response rate reported?,nonresponse,0/1,"Does the study state how many people did not respond? 0 = no, 1 = yes",Yes
 ,Non-response description,nonresponse_desc,text (free form),"Description of the non-responders (proportion non-response, any information on what direction non-response may have biased the results, etc.) as written in the manuscript",No
