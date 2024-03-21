@@ -24,11 +24,11 @@ summarize_cats <- function(indat) {
 
 
 # make simple kable table with merged first column
-pretty_table <- function(intab) {
+pretty_table <- function(intab, title = NULL) {
   
   tab <- intab %>%
     # make kable
-    kable(escape = F, font = 12, row.names = FALSE) %>%
+    kable(escape = F, font = 12, row.names = FALSE, caption = title) %>%
     # simple striped, bordered table
     kable_styling(bootstrap_options = c('bordered', 'striped', 'condensed'), 
                   position = 'left', full_width = FALSE) %>%

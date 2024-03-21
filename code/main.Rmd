@@ -564,8 +564,7 @@ Our goal is to estimate the proportion of individuals that seek care when they o
 i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
 ii. Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
 iii. Cholera (acute watery diarrhea of any severity, including resulting in death)
-iv. Gastroenteritis (diarrhea or vomiting)
-v.  Other etiologies or symptoms
+iv. Gastroenteritis (diarrhea or vomiting, including specific etiologies eg rotavirus or e coli)
 
 We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
@@ -599,19 +598,17 @@ sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
 # model scripts
-if (stan_redo) {
-  if (!sa) {
-    model_script <- here::here('code', 'meta_analysis_re.stan')
-  } else {
-    model_script <- here::here('code', 'meta_analysis_re_sa.stan')
-  }
+if (!sa) {
+  model_script <- here::here('code', 'meta_analysis_re.stan')
+} else {
+  model_script <- here::here('code', 'meta_analysis_re_sa.stan')
 }
 
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'study_type + time_care + recall_time + mult_choice + pop_cat',
-  'mod3' = 'study_type + time_care + recall_time + mult_choice + outbreak_desc + location_desc'
+  'mod2' = 'study_type + time_care + recall_time + case_cat',
+  'mod3' = 'study_type + time_care + recall_time + case_cat + outbreak'
 )
 ```
 
@@ -626,14 +623,17 @@ sr_dat <- df %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # format variables, combining some to reduce combinations
-  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Other', 
+  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis', 
                            ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
                                   ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)'), 'Severe diarrhea',
-                                         ifelse(case_cat %in% c('Cholera (watery diarrhea)', 'Cholera death'), 'Cholera',
+                                         ifelse(case_cat %in% c('Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae',
                                                                 'Gastroenteritis')))),
          pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
-                                         'Street dweller', 'University student'), 'Other', pop_cat),
-         location_desc = ifelse(location_desc %in% c('Peri-Urban', 'Urban and Peri-Urban'), 'Urban and Rural', location_desc),
+                                         'Street dweller', 'University student', 'Other',
+                                         'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat),
+         location_desc = ifelse(location_desc == 'Urban', 'Urban',
+                                ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
+                                       'Mixed')),
          time_care = ifelse(time_care == 'prior to current visit', 'Any care', time_care),
          study_type = ifelse(study_type == 'Case control', 'Surveillance', study_type),
          recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
@@ -644,11 +644,7 @@ sr_dat <- df %>%
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
   unique()
-```
 
-### All diarrhea case definitions
-
-```{r run unadjusted Stan models}
 # subset input data to diarrhea case definition
 #stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
 stan_dat <- sr_dat
@@ -656,6 +652,11 @@ case_strat <- 'all'
 
 # add random effect label by observation
 stan_dat <- stan_dat %>% mutate(study_lab = 1:nrow(stan_dat))
+```
+
+### Unadjusted estimates
+
+```{r run unadjusted Stan models}
 
 # run model 1 ----------------------------------------------------------
 
@@ -702,7 +703,10 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 # loop over covariates
 for (i in 1:length(covs)) {
-  message('Running univariate model for: ', covs[[i]])
+
+#TODO: figure out why the stan install stopped working, then re-run the case_cat univariate analysis
+#stan_redo <- TRUE
+#for (i in c(6)) {
   
   stan_model <- paste0('uni-', covs[[i]])
   stan_coef_eqn <- covs[[i]]
@@ -717,11 +721,13 @@ for (i in 1:length(covs)) {
                              paste0('propseek-', stan_run_id, '.rds'))
   
   if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Running univariate model for: ', covs[[i]]))
+    
     seekrate <- run_analysis_stan(
       model_script = model_script,
       dat_surveyed = stan_dat$n_did_survey,
       dat_soughtcare = stan_dat$n_did,
-      dat_covars = stan_dat %>% select_at(covs),
+      dat_covars = stan_dat %>% select_at(covs[[i]]),
       re_ids = stan_dat$study_lab,
       run_id = stan_run_id,
       coef_eqn = stan_coef_eqn,
@@ -829,19 +835,22 @@ if (!file.exists(out_est_file) | stan_redo) {
 ```
 
 ```{r data by covariate strata}
-strata1_dat <- stan_dat %>%
-  group_by(study_type, time_care, recall_time, mult_choice, pop_cat) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(study_type, time_care, recall_time, mult_choice, pop_cat)
 
-strata2_dat <- stan_dat %>%
-  group_by(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc)
+#TODO: update these with updated multivariate models
+
+# strata1_dat <- stan_dat %>%
+#   group_by(study_type, time_care, recall_time, mult_choice, pop_cat) %>%
+#   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+#             median = round(median(n_did/n_did_survey)*100,1)) %>%
+#   ungroup() %>%
+#   arrange(study_type, time_care, recall_time, mult_choice, pop_cat)
+# 
+# strata2_dat <- stan_dat %>%
+#   group_by(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc) %>%
+#   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+#             median = round(median(n_did/n_did_survey)*100,1)) %>%
+#   ungroup() %>%
+#   arrange(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc)
 ```
 
 ```{r combine model results}
@@ -898,13 +907,13 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice', 
-                                    'pop_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice',
-                                    'outbreak_desc', 'location_desc'))
+# cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice', 
+#                                     'pop_cat'))
+# cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice',
+#                                     'outbreak_desc', 'location_desc'))
 
 # get overall Vc proportion positive for unadjusted model, integrating over random effects
-prop_mod1 <- stratify('mod1', 'dia', data.frame(alpha = 1, n = 1, prop = 1))[[1]]
+prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1))[[1]]
 
 # # post-stratify to get overall Vc proportion positive by strata
 # prop_strat_mod2 <- stratify('mod2', 'dia', cats_mod2)[[2]]
@@ -912,7 +921,7 @@ prop_mod1 <- stratify('mod1', 'dia', data.frame(alpha = 1, n = 1, prop = 1))[[1]
 
 # save unadjusted post-stratified proportion to mod_est data frame
 mod_ests <- rbind(mod_ests,
-                  data.frame(run_id = 'dia-mod1',
+                  data.frame(run_id = 'all-mod1',
                              stan_id = 'prop',
                              mean = mean(prop_mod1$pos, na.rm = T),
                              lower = quantile(prop_mod1$pos, probs = .025, na.rm = T),
@@ -1014,11 +1023,11 @@ mod_ests <- mod_ests %>%
 
 ```{r figS4, fig.width=7, fig.height=4}
 # distributions of alpha
-propseek1 <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-dia-mod1.rds'))
+propseek1 <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1.rds'))
 
 s4aL <- plot_prior_post(propseek1$alpha$alpha, 
                 'logit(global intercept)',
-                arg1=0, arg2=5, dprior='dnorm') +
+                arg1=0, arg2=2, dprior='dnorm') +
   ggtitle('Unadjusted')
 
 
@@ -1042,7 +1051,7 @@ cowplot::plot_grid(s4aL, s4aR,
 ```{r tabS4}
 # mean adjusted proportion positive
 pr2 <- mod_ests %>%
-  filter(run_id %in% c('dia-mod1'), 
+  filter(run_id %in% c('all-mod1'), 
          stan_id == 'prop') %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
@@ -1054,7 +1063,7 @@ pr2 <- pr2 %>%
 
 # table S4
 tabS4 <- data.frame('Version' = c('Unadjusted'),
-                    'Proportion' = paste(pr2[,2],'(',pr2[,1],'-',pr2[,3],')'))
+                    'Proportion' = paste0(pr2[,2],' (',pr2[,1],' - ',pr2[,3],')'))
 
 names(tabS4) <- c('Version', 'Proportion (%)')
 pretty_table(tabS4)
@@ -1062,6 +1071,38 @@ pretty_table(tabS4)
 # tabS4 %>%
 #   flextable() %>%
 #   save_as_docx(path = here::here('code/tables/tableS4.docx'))
+```
+
+<br>
+
+### Univariate analyses
+
+Odds of seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
+
+```{r univariate odds ratios, results='asis'}
+
+mod_ests_uni <- mod_ests %>%
+    filter(grepl('uni', run_id) & stan_id != 'alpha')
+
+for (uni_id in unique(mod_ests_uni$run_id)) {
+
+  cov <- gsub('all-uni-', '', uni_id)
+  
+  # pull coefficients
+  coef_uni <- mod_ests_uni %>%
+    filter(run_id == uni_id)
+  
+  # table of univariate ORs
+  uni_or <- data.frame('Variable' = gsub(cov, '', coef_uni$stan_id),
+                       'Odds ratio' = paste0(round(coef_uni[,3],2),' (',
+                                             round(coef_uni[,4],2),' - ',
+                                             round(coef_uni[,5],2),')'))
+   
+  print(pretty_table(uni_or, title = cov))
+  cat('\n')
+  
+}
+
 ```
 
 <br>
