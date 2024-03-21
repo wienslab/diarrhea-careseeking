@@ -608,12 +608,13 @@ if (!sa) {
 stan_mod_eqns <- list(
   'mod1' = '1',
   'mod2' = 'study_type + time_care + recall_time + case_cat',
-  'mod3' = 'study_type + time_care + recall_time + case_cat + outbreak'
+  'mod3' = 'study_type + time_care + recall_time + outbreak_desc'
 )
 ```
 
 ```{r prep data for Stan}
 # set covariates
+#TODO: need to restructure the code to have observations by the final covariates included; for now, leaving the data stratified by urban/rural (if we aggregate above this, we'll have 150 observations)
 covs <- c('study_type', 'time_care', 'recall_time', 'pop_cat', 'mult_choice', # adjust for these
           'case_cat', 'outbreak_desc', 'location_desc') # examine differences by these (and age categories in separate analysis)
 
@@ -704,7 +705,7 @@ if (!file.exists(out_est_file) | stan_redo) {
 # loop over covariates
 for (i in 1:length(covs)) {
 
-#TODO: figure out why the stan install stopped working, then re-run the case_cat univariate analysis
+#TODO: figure out why Stan stopped working, then re-run the case_cat univariate and multivariate analyses
 #stan_redo <- TRUE
 #for (i in c(6)) {
   
@@ -835,22 +836,19 @@ if (!file.exists(out_est_file) | stan_redo) {
 ```
 
 ```{r data by covariate strata}
+strata1_dat <- stan_dat %>%
+  group_by(study_type, time_care, recall_time, case_cat) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(study_type, time_care, recall_time, case_cat)
 
-#TODO: update these with updated multivariate models
-
-# strata1_dat <- stan_dat %>%
-#   group_by(study_type, time_care, recall_time, mult_choice, pop_cat) %>%
-#   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-#             median = round(median(n_did/n_did_survey)*100,1)) %>%
-#   ungroup() %>%
-#   arrange(study_type, time_care, recall_time, mult_choice, pop_cat)
-# 
-# strata2_dat <- stan_dat %>%
-#   group_by(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc) %>%
-#   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-#             median = round(median(n_did/n_did_survey)*100,1)) %>%
-#   ungroup() %>%
-#   arrange(study_type, time_care, recall_time, mult_choice, outbreak_desc, location_desc)
+strata2_dat <- stan_dat %>%
+  group_by(study_type, time_care, recall_time, outbreak_desc) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(study_type, time_care, recall_time, outbreak_desc)
 ```
 
 ```{r combine model results}
@@ -907,17 +905,15 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-# cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice', 
-#                                     'pop_cat'))
-# cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'mult_choice',
-#                                     'outbreak_desc', 'location_desc'))
+cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'case_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'outbreak_desc'))
 
-# get overall Vc proportion positive for unadjusted model, integrating over random effects
+# get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1))[[1]]
 
-# # post-stratify to get overall Vc proportion positive by strata
-# prop_strat_mod2 <- stratify('mod2', 'dia', cats_mod2)[[2]]
-# prop_strat_mod3 <- stratify('mod3', 'dia', cats_mod3)[[2]]
+# post-stratify to get overall care seeking proportion by strata
+prop_strat_mod2 <- stratify('mod2', 'all', cats_mod2, stan_mod_eqns)[[2]]
+prop_strat_mod3 <- stratify('mod3', 'all', cats_mod3, stan_mod_eqns)[[2]]
 
 # save unadjusted post-stratified proportion to mod_est data frame
 mod_ests <- rbind(mod_ests,
@@ -930,86 +926,59 @@ mod_ests <- rbind(mod_ests,
                              )
                   )
 
-# Commented code below until we run univariate models, decide on model configurations, etc.
+# stratifications below each correspond to:
+#     study_type = 'Survey'
+#     time_care = 'Any care'
+#     recall_time = 'under30'
 
-# # stratifications below each correspond to:
-# #     study_type = 'Survey'
-# #     time_care = 'Any care'
-# #     recall_time = 'under30'
-# #     mult_choice = 0
-# 
-# prop_mod2_sub <- prop_strat_mod2 %>%
-#   filter(study_typeSurvey == 1 & recall_timeunder30 == 1 & mult_choice == 0 &
-#            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
-# 
-# prop_mod3_sub <- prop_strat_mod3 %>%
-#   filter(study_typeSurvey == 1 & recall_timeunder30 == 1 & mult_choice == 0 &
-#            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
-# 
-# # save estimates for each study population
-# prop_mod2_sub <- prop_mod2_sub %>%
-#   select_at(names(prop_mod2_sub)[grep("mean|lower|upper|pop_cat", names(prop_mod2_sub))])
-# 
-# pop_names <- names(prop_mod2_sub)[grep("pop_cat", names(prop_mod2_sub))] 
-# pop_names <- gsub('pop_cat', '', pop_names)
-# 
-# mod_ests <- rbind(mod_ests,
-#                   data.frame(run_id = c('Caregiver', pop_names),
-#                              stan_id = rep('prop', nrow(prop_mod2_sub)),
-#                              mean = prop_mod2_sub$mean,
-#                              lower = prop_mod2_sub$lower,
-#                              upper = prop_mod2_sub$upper,
-#                              row.names = NULL
-#                              )
-#                   )
-# 
-# # save estimates for urban, non-outbreak
-# row_id <- which(prop_mod3_sub$location_descUrban==1 & prop_mod3_sub$location_descRural==0 & prop_mod3_sub$outbreak_desc==0)
-# mod_ests <- rbind(mod_ests,
-#                   data.frame(run_id = 'Urban non-outbreak',
-#                              stan_id = 'prop',
-#                              mean = prop_mod3_sub[row_id, 'mean'],
-#                              lower = prop_mod3_sub[row_id, 'lower'],
-#                              upper = prop_mod3_sub[row_id, 'upper'],
-#                              row.names = NULL
-#                              )
-#                   )
-# 
-# # save estimates for rural, non-outbreak
-# row_id <- which(prop_mod3_sub$location_descUrban==0 & prop_mod3_sub$location_descRural==1 & prop_mod3_sub$outbreak_desc==0)
-# mod_ests <- rbind(mod_ests,
-#                   data.frame(run_id = 'Rural non-outbreak',
-#                              stan_id = 'prop',
-#                              mean = prop_mod3_sub[row_id, 'mean'],
-#                              lower = prop_mod3_sub[row_id, 'lower'],
-#                              upper = prop_mod3_sub[row_id, 'upper'],
-#                              row.names = NULL
-#                              )
-#                   )
-# 
-# # save estimates for urban, outbreak
-# row_id <- which(prop_mod3_sub$location_descUrban==1 & prop_mod3_sub$location_descRural==0 & prop_mod3_sub$outbreak_desc==1)
-# mod_ests <- rbind(mod_ests,
-#                   data.frame(run_id = 'Urban outbreak',
-#                              stan_id = 'prop',
-#                              mean = prop_mod3_sub[row_id, 'mean'],
-#                              lower = prop_mod3_sub[row_id, 'lower'],
-#                              upper = prop_mod3_sub[row_id, 'upper'],
-#                              row.names = NULL
-#                              )
-#                   )
-# 
-# # save estimates for rural, outbreak
-# row_id <- which(prop_mod3_sub$location_descUrban==0 & prop_mod3_sub$location_descRural==1 & prop_mod3_sub$outbreak_desc==1)
-# mod_ests <- rbind(mod_ests,
-#                   data.frame(run_id = 'Rural outbreak',
-#                              stan_id = 'prop',
-#                              mean = prop_mod3_sub[row_id, 'mean'],
-#                              lower = prop_mod3_sub[row_id, 'lower'],
-#                              upper = prop_mod3_sub[row_id, 'upper'],
-#                              row.names = NULL
-#                              )
-#                   )
+prop_mod2_sub <- prop_strat_mod2 %>%
+  filter(study_typeSurvey == 1 & recall_timeunder30 == 1 &
+           `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+prop_mod3_sub <- prop_strat_mod3 %>%
+  filter(study_typeSurvey == 1 & recall_timeunder30 == 1 &
+           `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+# save estimates for each case definition category
+prop_mod2_sub <- prop_mod2_sub %>%
+  select_at(names(prop_mod2_sub)[grep("mean|lower|upper|case_cat", names(prop_mod2_sub))])
+
+case_cats <- names(prop_mod2_sub)[grep("pop_cat", names(prop_mod2_sub))]
+case_cats <- gsub('pop_cat', '', case_cats)
+
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = c('Diarrhea', case_cats),
+                             stan_id = rep('prop', nrow(prop_mod2_sub)),
+                             mean = prop_mod2_sub$mean,
+                             lower = prop_mod2_sub$lower,
+                             upper = prop_mod2_sub$upper,
+                             row.names = NULL
+                             )
+                  )
+
+# save estimates for non-outbreak setting
+nonout_id <- which(prop_mod3_sub$outbreak_desc==0)
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'Non-outbreak',
+                             stan_id = 'prop',
+                             mean = prop_mod3_sub[nonout_id, 'mean'],
+                             lower = prop_mod3_sub[nonout_id, 'lower'],
+                             upper = prop_mod3_sub[nonout_id, 'upper'],
+                             row.names = NULL
+                             )
+                  )
+
+# save estimates for Outbreak setting
+out_id <- which(prop_mod3_sub$outbreak_desc==1)
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'Outbreak',
+                             stan_id = 'prop',
+                             mean = prop_mod3_sub[out_id, 'mean'],
+                             lower = prop_mod3_sub[out_id, 'lower'],
+                             upper = prop_mod3_sub[out_id, 'upper'],
+                             row.names = NULL
+                             )
+                  )
 
 # tidy results
 mod_ests <- mod_ests %>%
@@ -1049,14 +1018,14 @@ cowplot::plot_grid(s4aL, s4aR,
 #### Estimated proportion that seek care
 
 ```{r tabS4}
-# mean adjusted proportion positive
+# mean adjusted proportion seeking care
 pr2 <- mod_ests %>%
   filter(run_id %in% c('all-mod1'), 
          stan_id == 'prop') %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
 
-# mean adjusted proportion positive
+# mean adjusted proportion seeking care
 pr2 <- pr2 %>%
   mutate(variable = c('Unadjusted')) %>%
   mutate(variable = factor(variable, levels = c('Unadjusted')))
@@ -1107,7 +1076,22 @@ for (uni_id in unique(mod_ests_uni$run_id)) {
 
 <br>
 
+### Multivariate analysis
 
+```{r}
+#TODO: table like table s4
+#TODO: figure like figure 3
+```
+
+<br>
+
+### Forest plot
+
+```{r}
+#TODO: figure like figure 4, grouped by case_cat (maybe also labeled by outbreak, TBD decide after deciding final model structures for multivariate analysis; for example, maybe just label by country and outbreak_desc; might also want to include "adjusted" estimates that account for study methods i.e., mod2 or 3 or a new one)
+```
+
+<br>
 
 ## Additional things to consider
 

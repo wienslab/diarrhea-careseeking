@@ -60,7 +60,7 @@ forest_plot <- function(plot_dt) {
     # study-level proportion by RDT
     geom_point(aes(y = id, x = RDT_p, color = 'RDT'), shape = 1, size = 0.85) +
     geom_errorbarh(aes(y = id, xmin = RDT_lower, xmax = RDT_upper, color = 'RDT'), height = 0.1) +
-    # study-level underlying positivity rates
+    # study-level underlying proportion
     geom_point(aes(y = id, x = mean, color = 'Adjusted'), size = 0.95, alpha = 0.7) +
     geom_errorbarh(aes(y = id, xmin = lower, xmax = upper), height = 0.1, alpha = 0.7) +
     # scale axes
@@ -501,7 +501,7 @@ obs_by_cat <- function(dat, covs) {
   
   # get study observations
   dat <- dat %>%
-    dplyr::select_at(c('study_id', 'entry_id', 'country_iso3', covs)) %>%
+    dplyr::select_at(c('study_id', 'country_iso3', covs)) %>%
     unique()
 
   # count number by covariates
@@ -517,13 +517,13 @@ obs_by_cat <- function(dat, covs) {
   return(props)
 }
 
-# stratify estimates of V. cholerae positivity
+# stratify estimates of the proportion that seek care
 # using alpha, beta, and integrating over random effects,
 # nb: also post-stratifies
 # assuming that the proportion of all potential studies that use different methods
 # and case definitions match the proportions we found in the systematic review
 # but we do not include the post-stratified results because they are not meaningful
-stratify <- function(mod, case_strat, cov_cats) {
+stratify <- function(mod, case_strat, cov_cats, mod_eqns) {
   
   # load model draws
   draws <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates',
@@ -536,16 +536,11 @@ stratify <- function(mod, case_strat, cov_cats) {
   sigma <- draws[grep('sigma_re', names(draws))][[1]][[1]]
   
   # covariate matrix
-  mod_eqns <- list(
-    'mod1' = '1',
-    'mod2' = 'study_type + time_care + recall_time + mult_choice + pop_cat',
-    'mod3' = 'study_type + time_care + recall_time + mult_choice + outbreak_desc + location_desc'
-  )
   coef_eqn <- mod_eqns[[mod]]
   cat_mat <- cov_cats %>%
     model.matrix(as.formula(paste("~", coef_eqn)), data = .)
   
-  # compute positivity estimates by age and sampling categories
+  # compute proportion estimates by age and sampling categories
   cl <- parallel::makeCluster(8)
   doParallel::registerDoParallel(cl)
   
@@ -559,7 +554,7 @@ stratify <- function(mod, case_strat, cov_cats) {
               .inorder = T) %do%
         {
           
-          # compute positivity integrating across in observation random effects
+          # compute proportion integrating across in observation random effects
           pos <- integrate(function(x) {
             plogis(qnorm(
               x, as.matrix(beta[j, , drop = F]) %*% t(cat_mat[i, , drop = F]),
@@ -580,13 +575,13 @@ stratify <- function(mod, case_strat, cov_cats) {
   
   parallel::stopCluster(cl)
   
-  # overall positivity by draw, weighted by proportion of studies in each strata
+  # overall proportion by draw, weighted by proportion of studies in each strata
   p_est <- cat_p %>%
     group_by(sim) %>%
     summarize(pos = weighted.mean(pos, w = prop)) %>%
     ungroup()
   
-  # mean positivity by strata
+  # mean proportion by strata
   strata_summary <- cat_p %>%
     group_by(strat) %>%
     summarize(mean = mean(pos),
