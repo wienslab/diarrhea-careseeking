@@ -559,7 +559,7 @@ cowplot::plot_grid(f3c, f3d,
 
 ## Preliminary analysis
 
-Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, we stratify the analysis by case definition to estimate the proportion that seek care for:
+Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, we have five broad categories of case definitions (below). Since some of these have few observations (cholera and "other"), we can't run stratifications (which would be ideal). Instead, we'll start by testing these along with other potential covariates in univariate analyses.
 
 i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
 ii. Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
@@ -567,24 +567,26 @@ iii. Cholera (acute watery diarrhea of any severity, including resulting in deat
 iv. Gastroenteritis (diarrhea or vomiting)
 v.  Other etiologies or symptoms
 
-Within each stratification, we build three generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
+We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
 1.  Unadjusted
-2.  Adjusted for study methodology and population:
-    -   study type
-    -   timing of care seeking
-    -   recall period
-    -   multiple choice questions
-    -   study population
-3.  Adjusted for study methodology and contextual factors:
-    -   study type
-    -   timing of care seeking
-    -   recall period
-    -   multiple choice questions
-    -   outbreak
-    -   urban/rural
+2.  Univariate models adjusted individually for:
 
-*NB / TODO*: \* Before building models 2 and 3, we need to run univariate analyses. Results below just represent unadjusted, model 1 results for now. \* Also need to examine why proportion seeking care is so sensitive to priors. May need to reconstruct this model as well. \* Structure this code so it requires less copy/paste (will get cumbersome with stratifications and sub-analyses).
+    a. Study methodology and population:
+        -   study type
+        -   case definition
+        -   timing of care seeking
+        -   recall period
+        -   multiple choice questions
+        -   study population
+
+    b. Contextual factors:
+        -   outbreak
+        -   urban/rural
+
+3. Multivatiate models adjusted for factors identified as significant in multivariate models.
+
+*NB*: Here our observations represent data aggregated to study_id, country, and potnetial covariate stratifications, for a total of 161 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep for Stan}
 # use all cores but 2
@@ -592,7 +594,7 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
@@ -616,7 +618,7 @@ stan_mod_eqns <- list(
 ```{r prep data for Stan}
 # set covariates
 covs <- c('study_type', 'time_care', 'recall_time', 'pop_cat', 'mult_choice', # adjust for these
-          'outbreak_desc', 'location_desc') # examine differences by these (and age categories in separate analysis)
+          'case_cat', 'outbreak_desc', 'location_desc') # examine differences by these (and age categories in separate analysis)
 
 # proportion seeking care from meta-analysis primary dataset
 # aggregate across stratifications that we're not including as covariates or stratifications
@@ -636,23 +638,21 @@ sr_dat <- df %>%
          study_type = ifelse(study_type == 'Case control', 'Surveillance', study_type),
          recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
-  # aggregate care seeking
-  group_by_at(c('study_id', 'entry_id', 'country_iso3', 'region', 'case_cat', covs)) %>%
-  #TODO: take care in how we aggregate these if/when we aggregate higher than entry_id
-  summarize(n_did_survey = n_did_survey, 
+  # aggregate care seeking numbers to study_id and covariate categories ("observations")
+  group_by_at(c('study_id', 'country_iso3', 'region', covs)) %>%
+  summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
-  unique() %>%
-  # proportion seeking care
-  mutate(prop_seek = n_did/n_did_survey)
+  unique()
 ```
 
-### i. Diarrhea
+### All diarrhea case definitions
 
-```{r run Stan models}
+```{r run unadjusted Stan models}
 # subset input data to diarrhea case definition
-stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
-case_strat <- 'dia'
+#stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
+stan_dat <- sr_dat
+case_strat <- 'all'
 
 # add random effect label by observation
 stan_dat <- stan_dat %>% mutate(study_lab = 1:nrow(stan_dat))
@@ -696,8 +696,55 @@ if (!file.exists(out_est_file) | stan_redo) {
 } else {
   seekrate <- readRDS(out_est_file)
 }
+```
 
+```{r run univariate Stan models}
 
+# loop over covariates
+for (i in 1:length(covs)) {
+  message('Running univariate model for: ', covs[[i]])
+  
+  stan_model <- paste0('uni-', covs[[i]])
+  stan_coef_eqn <- covs[[i]]
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(sa, '-sa', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = stan_dat$n_did,
+      dat_covars = stan_dat %>% select_at(covs),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
+
+```
+
+```{r run multivariate Stan models}
 # run model 2 ----------------------------------------------------------
 
 # which Stan model to run
@@ -806,7 +853,7 @@ mod_ests <- data.frame(run_id = NA,
                       row.names = NULL)
 
 file_names <- list.files(here::here('data', 'generated_data', 'care_seeking_estimates'))
-file_names <- file_names[grep('dia', file_names)]
+file_names <- file_names[grep('all', file_names)]
 
 for (i in file_names) {
   
@@ -1018,6 +1065,8 @@ pretty_table(tabS4)
 ```
 
 <br>
+
+
 
 ## Additional things to consider
 
