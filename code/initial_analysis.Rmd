@@ -572,9 +572,9 @@ We'll build generalized linear models with a study-level random intercept follow
 2.  Univariate models adjusted individually for:
 
     a. Study methodology and population:
-        -   study type
         -   case definition
         -   timing of care seeking
+        -   regarding self or child
         -   recall period
         -   multiple choice questions
         -   study population
@@ -582,10 +582,11 @@ We'll build generalized linear models with a study-level random intercept follow
     b. Contextual factors:
         -   outbreak
         -   urban/rural
+        
 
 3. Multivatiate models adjusted for factors identified as significant in multivariate models.
 
-*NB*: Here our observations represent data aggregated to study_id, country, and potnetial covariate stratifications, for a total of 161 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
+*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 161 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep for Stan}
 # use all cores but 2
@@ -605,17 +606,19 @@ if (!sa) {
 }
 
 # coefficient equations corresponding to each model
+#TODO: add model where we just adjust for methods (get an "adjusted" estimate)
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'study_type + time_care + recall_time + case_cat',
-  'mod3' = 'study_type + time_care + recall_time + outbreak_desc'
+  'mod2' = 'time_care + recall_time + case_cat',
+  'mod3' = 'time_care + recall_time + outbreak_desc'
 )
 ```
 
 ```{r prep data for Stan}
 # set covariates
 #TODO: need to restructure the code to have observations by the final covariates included; for now, leaving the data stratified by urban/rural (if we aggregate above this, we'll have 150 observations)
-covs <- c('study_type', 'time_care', 'recall_time', 'pop_cat', 'mult_choice', # adjust for these
+#TODO: need to set reference categories for the covariates
+covs <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child', # adjust for these
           'case_cat', 'outbreak_desc', 'location_desc') # examine differences by these (and age categories in separate analysis)
 
 # proportion seeking care from meta-analysis primary dataset
@@ -704,10 +707,6 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 # loop over covariates
 for (i in 1:length(covs)) {
-
-#TODO: figure out why Stan stopped working, then re-run the case_cat univariate and multivariate analyses
-#stan_redo <- TRUE
-#for (i in c(6)) {
   
   stan_model <- paste0('uni-', covs[[i]])
   stan_coef_eqn <- covs[[i]]
@@ -837,18 +836,18 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
-  group_by(study_type, time_care, recall_time, case_cat) %>%
+  group_by(time_care, recall_time, case_cat) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(study_type, time_care, recall_time, case_cat)
+  arrange(time_care, recall_time, case_cat)
 
 strata2_dat <- stan_dat %>%
-  group_by(study_type, time_care, recall_time, outbreak_desc) %>%
+  group_by(time_care, recall_time, outbreak_desc) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(study_type, time_care, recall_time, outbreak_desc)
+  arrange(time_care, recall_time, outbreak_desc)
 ```
 
 ```{r combine model results}
@@ -905,11 +904,11 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-cats_mod2 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('study_type', 'time_care', 'recall_time', 'outbreak_desc'))
+cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'recall_time', 'case_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('time_care', 'recall_time', 'outbreak_desc'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
-prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1))[[1]]
+prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
 
 # post-stratify to get overall care seeking proportion by strata
 prop_strat_mod2 <- stratify('mod2', 'all', cats_mod2, stan_mod_eqns)[[2]]
@@ -927,24 +926,25 @@ mod_ests <- rbind(mod_ests,
                   )
 
 # stratifications below each correspond to:
-#     study_type = 'Survey'
 #     time_care = 'Any care'
-#     recall_time = 'under30'
+#     recall_time = 'over30_orNA' for now!
+#TODO: update model config so that we can set the recall_time here to under 30 (may need to not have cholera separate)
+#TODO: or can do separate model where we look at cholera, but only adjust for timing of care seeking
 
 prop_mod2_sub <- prop_strat_mod2 %>%
-  filter(study_typeSurvey == 1 & recall_timeunder30 == 1 &
+  filter(recall_timeunder30 == 0 &
            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(study_typeSurvey == 1 & recall_timeunder30 == 1 &
+  filter(recall_timeunder30 == 0 &
            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
   select_at(names(prop_mod2_sub)[grep("mean|lower|upper|case_cat", names(prop_mod2_sub))])
 
-case_cats <- names(prop_mod2_sub)[grep("pop_cat", names(prop_mod2_sub))]
-case_cats <- gsub('pop_cat', '', case_cats)
+case_cats <- names(prop_mod2_sub)[grep("case_cat", names(prop_mod2_sub))]
+case_cats <- gsub('case_cat', '', case_cats)
 
 mod_ests <- rbind(mod_ests,
                   data.frame(run_id = c('Diarrhea', case_cats),
@@ -1078,9 +1078,91 @@ for (uni_id in unique(mod_ests_uni$run_id)) {
 
 ### Multivariate analysis
 
+#### Factors associated with variation in care seeking rates
+
+Odds that an individual with diarrhea seeks care for themselves or their child in an outbreak context or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself and recall period).
+
+```{r coefs}
+# mean coefficients
+c2 <- mod_ests %>%
+  filter(run_id %in% c('all-mod2'),
+         stan_id != 'alpha') %>%
+  dplyr::select(stan_id, mean, lower, upper) %>%
+  mutate(mean = round(mean, 2),
+         lower = round(lower, 2),
+         upper = round(upper, 2))
+
+c3 <- mod_ests %>%
+  filter(run_id %in% c('all-mod3'),
+         stan_id != 'alpha') %>%
+  dplyr::select(stan_id, mean, lower, upper) %>%
+  mutate(mean = round(mean, 2),
+         lower = round(lower, 2),
+         upper = round(upper, 2))
+
+# make a table
+pretty_table(c2, title = 'Model adjusting for questions + case definition')
+pretty_table(c3, title = 'Model adjusting for questions + outbreak context')
+```
+
+<br>
+
+#### Stratified estimates of care seeking by category
+
+Care seeking question variables include recall period and timing of care seeking. 
+
+Note: Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods >30 days. Given the latter, the adjusted estimates are likely overestimates. In order to create these estimates for recall periods <30 days, we'll need to change how we're doing the cholera analysis (we have no studies specific for cholera where a recall period wasn't either missing or very long).
+
 ```{r}
 #TODO: table like table s4
-#TODO: figure like figure 3
+
+# mean adjusted proportion positive
+cs <- mod_ests %>%
+  filter(stan_id == 'prop') %>%
+  dplyr::select(run_id, lower, mean, upper) %>%
+  mutate(run_id = ifelse(run_id == 'all-mod1', '1', run_id))
+
+# table
+tabs <- data.frame('Model' = c('Unadjusted', 
+                               rep('Adjusted for care seeking questions 1', 4),
+                               rep('Adjusted for care seeking questions 2', 2)),
+                   'Variable' = cs$run_id,
+                   'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
+
+names(tabs) <- c('Version', 'Variable', 'Proportion (%)')
+pretty_table(tabs)
+
+```
+
+<br>
+
+```{r, fig.height = 4, fig.width = 8}
+# set colors
+pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
+
+# update data frame for plotting
+cs_plot <- cs %>% 
+  mutate(facet = c('Unadjusted', 
+                   rep('Adjusted for questions 1', 4),
+                   rep('Adjusted for questions 2', 2))) %>%
+  mutate(facet = factor(facet, levels = c('Unadjusted',
+                                          'Adjusted for questions 1',
+                                          'Adjusted for questions 2')))
+
+# positivity plot
+figs <- ggplot(cs_plot) +
+          geom_point(aes(x = run_id, y = mean, color = run_id), size = 2) +
+          geom_errorbar(aes(x = run_id, ymin = lower, ymax = upper, color = run_id), width = 0.3) +
+          scale_color_manual(values = pal) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          ylim(0,100) +
+          ylab('Proportion (%)') + xlab(NULL) +
+          facet_grid(.~facet, scales = 'free_x', space = 'free_x') +
+          ggtitle('Proportion that sought care')
+
+figs
+
 ```
 
 <br>
