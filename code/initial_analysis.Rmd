@@ -19,7 +19,7 @@ knitr::opts_knit$set(root.dir = here::here())
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
   countrycode, here, lubridate, tidyverse, ggplot2, doParallel, boot,
-  sf, raster, RColorBrewer, cowplot, kableExtra, flextable
+  sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales
 )
 
 # custom functions
@@ -586,7 +586,7 @@ We'll build generalized linear models with a study-level random intercept follow
 
 3. Multivatiate models adjusted for factors identified as significant in multivariate models.
 
-*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 161 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
+*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 171 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep for Stan}
 # use all cores but 2
@@ -616,8 +616,6 @@ stan_mod_eqns <- list(
 
 ```{r prep data for Stan}
 # set covariates
-#TODO: need to restructure the code to have observations by the final covariates included; for now, leaving the data stratified by urban/rural (if we aggregate above this, we'll have 150 observations)
-#TODO: need to set reference categories for the covariates
 covs <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child', # adjust for these
           'case_cat', 'outbreak_desc', 'location_desc') # examine differences by these (and age categories in separate analysis)
 
@@ -627,21 +625,20 @@ sr_dat <- df %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # format variables, combining some to reduce combinations
-  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis', 
+  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
                            ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
-                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)'), 'Severe diarrhea',
-                                         ifelse(case_cat %in% c('Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae',
-                                                                'Gastroenteritis')))),
+                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
+                                                         'Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae or severe diarrhea',
+                                                                'Gastroenteritis or non-Vc etiologies'))),
          pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student', 'Other',
                                          'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
-                                       'Mixed')),
-         time_care = ifelse(time_care == 'prior to current visit', 'Any care', time_care),
-         study_type = ifelse(study_type == 'Case control', 'Surveillance', study_type),
+                                       'Urban and non-urban')),
          recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
-         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
+         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
+         self_or_child = ifelse(self_or_child == 'Child', 'Child', 'Self or family member')) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', covs)) %>%
   summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
@@ -748,6 +745,191 @@ for (i in 1:length(covs)) {
   }
 }
 
+```
+
+```{r test for confounding with self_or_child}
+
+# loop over covariates
+for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time')) {
+  
+  stan_model <- paste0('self_or_child-', cov)
+  stan_coef_eqn <- cov
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(sa, '-sa', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Testing for confounding of self_or_child with: ', cov))
+    
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = ifelse(stan_dat$self_or_child == 'Child', 0, 1),
+      dat_covars = stan_dat %>% select_at(cov),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
+```
+
+```{r test for confounding with outbreak_desc}
+
+# loop over covariates
+for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child')) {
+  
+  stan_model <- paste0('outbreak_desc-', cov)
+  stan_coef_eqn <- cov
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(sa, '-sa', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Testing for confounding of outbreak_desc with: ', cov))
+    
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = stan_dat$outbreak_desc,
+      dat_covars = stan_dat %>% select_at(cov),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
+```
+
+```{r test for confounding with case_cat}
+
+# data to just look at either diarrhea and 1) vc or severe, or 2) gastro or non-vc
+stan_dat_vc <- stan_dat %>% filter(case_cat != 'Gastroenteritis or non-Vc etiologies')
+stan_dat_ge <- stan_dat %>% filter(case_cat != 'V cholerae or severe diarrhea')
+
+# loop over covariates for V cholerae or severe diarrhea  -------------------------------
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child')) {
+  
+  stan_model <- paste0('vc_severe-', cov)
+  stan_coef_eqn <- cov
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(sa, '-sa', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Testing for confounding of vc_severe with: ', cov))
+    
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat_vc$n_did_survey,
+      dat_soughtcare = ifelse(stan_dat_vc$case_cat == 'Diarrhea', 0, 1),
+      dat_covars = stan_dat_vc %>% select_at(cov),
+      re_ids = stan_dat_vc$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
+
+# loop over covariates for Gastroenteritis or non-Vc etiologies -----------------------
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child')) {
+  
+  stan_model <- paste0('ge_nonvc-', cov)
+  stan_coef_eqn <- cov
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(sa, '-sa', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Testing for confounding of ge_nonvc with: ', cov))
+    
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat_ge$n_did_survey,
+      dat_soughtcare = ifelse(stan_dat_ge$case_cat == 'Diarrhea', 0, 1),
+      dat_covars = stan_dat_ge %>% select_at(cov),
+      re_ids = stan_dat_ge$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
 ```
 
 ```{r run multivariate Stan models}
@@ -927,16 +1109,14 @@ mod_ests <- rbind(mod_ests,
 
 # stratifications below each correspond to:
 #     time_care = 'Any care'
-#     recall_time = 'over30_orNA' for now!
-#TODO: update model config so that we can set the recall_time here to under 30 (may need to not have cholera separate)
-#TODO: or can do separate model where we look at cholera, but only adjust for timing of care seeking
+#     recall_time = 'under30'
 
 prop_mod2_sub <- prop_strat_mod2 %>%
-  filter(recall_timeunder30 == 0 &
+  filter(recall_timeunder30 == 1 &
            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(recall_timeunder30 == 0 &
+  filter(recall_timeunder30 == 1 &
            `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 # save estimates for each case definition category
@@ -1076,6 +1256,130 @@ for (uni_id in unique(mod_ests_uni$run_id)) {
 
 <br>
 
+### Tests for potential confounding variables
+
+#### self_or_child
+
+```{r self_or_child confounding, results='asis'}
+
+mod_ests_soc <- mod_ests %>%
+    filter(grepl('all-self_or_child', run_id) & stan_id != 'alpha')
+
+for (soc_id in unique(mod_ests_soc$run_id)) {
+
+  cov <- gsub('all-self_or_child-', '', soc_id)
+  
+  # pull coefficients
+  coef_soc <- mod_ests_soc %>%
+    filter(run_id == soc_id)
+  
+  # table of univariate ORs
+  soc_or <- data.frame('Variable' = gsub(cov, '', coef_soc$stan_id),
+                       'Odds ratio' = paste0(round(coef_soc[,3],2),' (',
+                                             round(coef_soc[,4],2),' - ',
+                                             round(coef_soc[,5],2),')'))
+   
+  print(pretty_table(soc_or, title = cov))
+  cat('\n')
+  
+}
+
+```
+
+<br>
+
+#### outbreak_desc
+
+```{r outbreak_desc confounding, results='asis'}
+
+mod_ests_out <- mod_ests %>%
+    filter(grepl('all-outbreak_desc', run_id) & stan_id != 'alpha')
+
+for (out_id in unique(mod_ests_out$run_id)) {
+
+  cov <- gsub('all-outbreak_desc-', '', out_id)
+  
+  # pull coefficients
+  coef_out <- mod_ests_out %>%
+    filter(run_id == out_id)
+  
+  # table of univariate ORs
+  out_or <- data.frame('Variable' = gsub(cov, '', coef_out$stan_id),
+                       'Odds ratio' = paste0(round(coef_out[,3],2),' (',
+                                             round(coef_out[,4],2),' - ',
+                                             round(coef_out[,5],2),')'))
+   
+  print(pretty_table(out_or, title = cov))
+  cat('\n')
+  
+}
+
+```
+
+<br>
+
+#### case_cat
+
+##### V cholerae or severe diarrhea
+
+```{r vc_severe confounding, results='asis'}
+
+mod_ests_vc <- mod_ests %>%
+    filter(grepl('all-vc_severe', run_id) & stan_id != 'alpha')
+
+for (vc_id in unique(mod_ests_vc$run_id)) {
+
+  cov <- gsub('all-vc_severe-', '', vc_id)
+  
+  # pull coefficients
+  coef_vc <- mod_ests_vc %>%
+    filter(run_id == vc_id)
+  
+  # table of univariate ORs
+  vc_or <- data.frame('Variable' = gsub(cov, '', coef_vc$stan_id),
+                       'Odds ratio' = paste0(round(coef_vc[,3],2),' (',
+                                             round(coef_vc[,4],2),' - ',
+                                             round(coef_vc[,5],2),')'))
+   
+  print(pretty_table(vc_or, title = cov))
+  cat('\n')
+  
+}
+
+```
+
+<br>
+
+##### Gastroenteritis or non-V cholerae
+
+```{r ge_nonvc confounding, results='asis'}
+
+mod_ests_ge <- mod_ests %>%
+    filter(grepl('all-ge_nonvc', run_id) & stan_id != 'alpha')
+
+for (ge_id in unique(mod_ests_ge$run_id)) {
+
+  cov <- gsub('all-ge_nonvc-', '', ge_id)
+  
+  # pull coefficients
+  coef_ge <- mod_ests_ge %>%
+    filter(run_id == ge_id)
+  
+  # table of univariate ORs
+  ge_or <- data.frame('Variable' = gsub(cov, '', coef_ge$stan_id),
+                       'Odds ratio' = paste0(round(coef_ge[,3],2),' (',
+                                             round(coef_ge[,4],2),' - ',
+                                             round(coef_ge[,5],2),')'))
+   
+  print(pretty_table(ge_or, title = cov))
+  cat('\n')
+  
+}
+
+```
+
+<br>
+
 ### Multivariate analysis
 
 #### Factors associated with variation in care seeking rates
@@ -1111,10 +1415,9 @@ pretty_table(c3, title = 'Model adjusting for questions + outbreak context')
 
 Care seeking question variables include recall period and timing of care seeking. 
 
-Note: Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods >30 days. Given the latter, the adjusted estimates are likely overestimates. In order to create these estimates for recall periods <30 days, we'll need to change how we're doing the cholera analysis (we have no studies specific for cholera where a recall period wasn't either missing or very long).
+Note: Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods <30 days. Also we're probably inappropriately adjusting here given some potential confounding, so this is very prelim!
 
 ```{r}
-#TODO: table like table s4
 
 # mean adjusted proportion positive
 cs <- mod_ests %>%
@@ -1124,7 +1427,7 @@ cs <- mod_ests %>%
 
 # table
 tabs <- data.frame('Model' = c('Unadjusted', 
-                               rep('Adjusted for care seeking questions 1', 4),
+                               rep('Adjusted for care seeking questions 1', 3),
                                rep('Adjusted for care seeking questions 2', 2)),
                    'Variable' = cs$run_id,
                    'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
@@ -1143,7 +1446,7 @@ pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 # update data frame for plotting
 cs_plot <- cs %>% 
   mutate(facet = c('Unadjusted', 
-                   rep('Adjusted for questions 1', 4),
+                   rep('Adjusted for questions 1', 3),
                    rep('Adjusted for questions 2', 2))) %>%
   mutate(facet = factor(facet, levels = c('Unadjusted',
                                           'Adjusted for questions 1',
@@ -1158,6 +1461,7 @@ figs <- ggplot(cs_plot) +
           theme(legend.position = 'none') +
           ylim(0,100) +
           ylab('Proportion (%)') + xlab(NULL) +
+          scale_x_discrete(labels = label_wrap(15)) +
           facet_grid(.~facet, scales = 'free_x', space = 'free_x') +
           ggtitle('Proportion that sought care')
 
@@ -1182,6 +1486,7 @@ Additional country- or study-level covariates:
 -   Average travel time to health facilities
 -   Policies on free or affordable healthcare
 -   Ratio of medical practitioners or CHWs to population
+-   Geographic region or LMIC vs. HIC
 
 Sub-analyses:
 
@@ -1193,8 +1498,10 @@ Sub-analyses:
 Sensitivity analyses:
 
 -   study quality stratifications based on critical appraisals
+-   drop non-standard populations (e.g., at a hospital) or other categories
 
 Supplementary analyses:
 
 -   would you seek care
 -   assumptions about single-choice answers and where else people may seek care
+-   recalculate proportion seeking care in hospital data to account for the fact that they're already at hospital (use Bayes rule)
