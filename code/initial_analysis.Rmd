@@ -607,10 +607,12 @@ if (!sa) {
 
 # coefficient equations corresponding to each model
 #TODO: add model where we just adjust for methods (get an "adjusted" estimate)
+#TODO: adjust for multiple choice questions (as a covariate, need to make sure that it's a covariate though)
+#TODO: consider converting self_or_child back to categorical, or handling another way eg stratifying (doesn't make sense now)
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'time_care + recall_time + case_cat',
-  'mod3' = 'time_care + recall_time + outbreak_desc'
+  'mod2' = 'time_care + case_cat',
+  'mod3' = 'recall_time + self_or_child'
 )
 ```
 
@@ -1018,18 +1020,18 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
-  group_by(time_care, recall_time, case_cat) %>%
+  group_by(time_care, case_cat) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(time_care, recall_time, case_cat)
+  arrange(time_care, case_cat)
 
 strata2_dat <- stan_dat %>%
-  group_by(time_care, recall_time, outbreak_desc) %>%
+  group_by(recall_time, self_or_child) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(time_care, recall_time, outbreak_desc)
+  arrange(recall_time, self_or_child)
 ```
 
 ```{r combine model results}
@@ -1086,8 +1088,8 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'recall_time', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('time_care', 'recall_time', 'outbreak_desc'))
+cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'case_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('recall_time', 'self_or_child'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
@@ -1112,12 +1114,10 @@ mod_ests <- rbind(mod_ests,
 #     recall_time = 'under30'
 
 prop_mod2_sub <- prop_strat_mod2 %>%
-  filter(recall_timeunder30 == 1 &
-           `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(recall_timeunder30 == 1 &
-           `time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(recall_timeunder30 == 1)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
@@ -1136,10 +1136,10 @@ mod_ests <- rbind(mod_ests,
                              )
                   )
 
-# save estimates for non-outbreak setting
-nonout_id <- which(prop_mod3_sub$outbreak_desc==0)
+# save estimates for Self or family member
+nonout_id <- which(prop_mod3_sub$self_or_child==1)
 mod_ests <- rbind(mod_ests,
-                  data.frame(run_id = 'Non-outbreak',
+                  data.frame(run_id = 'Self or family member',
                              stan_id = 'prop',
                              mean = prop_mod3_sub[nonout_id, 'mean'],
                              lower = prop_mod3_sub[nonout_id, 'lower'],
@@ -1148,10 +1148,10 @@ mod_ests <- rbind(mod_ests,
                              )
                   )
 
-# save estimates for Outbreak setting
-out_id <- which(prop_mod3_sub$outbreak_desc==1)
+# save estimates for Child
+out_id <- which(prop_mod3_sub$self_or_child==0)
 mod_ests <- rbind(mod_ests,
-                  data.frame(run_id = 'Outbreak',
+                  data.frame(run_id = 'Child',
                              stan_id = 'prop',
                              mean = prop_mod3_sub[out_id, 'mean'],
                              lower = prop_mod3_sub[out_id, 'lower'],
@@ -1382,6 +1382,16 @@ for (ge_id in unique(mod_ests_ge$run_id)) {
 
 ### Multivariate analysis
 
+In the univariate and bivariate analyses, found that we cannot separate effects of:
+
+1. time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
+2. recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
+
+So we run two analyses below, looking separately at case_cat and self_or_child
+
+1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
+2. In the second model, we test self_or_child adjusting for recall_period, assuming that self_or_child is more directly related to care seeking than how the timing of the care seeking question was phrased or whether they had vomiting or other symptoms (this assumption may be less reasonable).
+
 #### Factors associated with variation in care seeking rates
 
 Odds that an individual with diarrhea seeks care for themselves or their child in an outbreak context or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself and recall period).
@@ -1396,6 +1406,7 @@ c2 <- mod_ests %>%
          lower = round(lower, 2),
          upper = round(upper, 2))
 
+#TODO: the model 2 results are weird (shouldn't be so high for the 30 day recall period) and weird that child care seeking is lower. may not be appropriate to do this and should also check model convergence
 c3 <- mod_ests %>%
   filter(run_id %in% c('all-mod3'),
          stan_id != 'alpha') %>%
@@ -1405,17 +1416,15 @@ c3 <- mod_ests %>%
          upper = round(upper, 2))
 
 # make a table
-pretty_table(c2, title = 'Model adjusting for questions + case definition')
-pretty_table(c3, title = 'Model adjusting for questions + outbreak context')
+pretty_table(c2, title = 'Model adjusting for timing of care seeking question + case definition')
+pretty_table(c3, title = 'Model adjusting for recall period + whether the question is about self/family member of child')
 ```
 
 <br>
 
 #### Stratified estimates of care seeking by category
 
-Care seeking question variables include recall period and timing of care seeking. 
-
-Note: Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods <30 days. Also we're probably inappropriately adjusting here given some potential confounding, so this is very prelim!
+Care seeking question variables include recall period and timing of care seeking. Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods <30 days.
 
 ```{r}
 
@@ -1427,8 +1436,8 @@ cs <- mod_ests %>%
 
 # table
 tabs <- data.frame('Model' = c('Unadjusted', 
-                               rep('Adjusted for care seeking questions 1', 3),
-                               rep('Adjusted for care seeking questions 2', 2)),
+                               rep('Stratum: Any care seeking', 3),
+                               rep('Stratum: Recall period 30 days', 2)),
                    'Variable' = cs$run_id,
                    'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
 
@@ -1439,18 +1448,18 @@ pretty_table(tabs)
 
 <br>
 
-```{r, fig.height = 4, fig.width = 8}
+```{r, fig.height = 3.5, fig.width = 7}
 # set colors
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
 cs_plot <- cs %>% 
   mutate(facet = c('Unadjusted', 
-                   rep('Adjusted for questions 1', 3),
-                   rep('Adjusted for questions 2', 2))) %>%
+                   rep('Stratum: Any care seeking', 3),
+                   rep('Stratum: Recall period 30 days', 2))) %>%
   mutate(facet = factor(facet, levels = c('Unadjusted',
-                                          'Adjusted for questions 1',
-                                          'Adjusted for questions 2')))
+                                          'Stratum: Any care seeking',
+                                          'Stratum: Recall period 30 days')))
 
 # positivity plot
 figs <- ggplot(cs_plot) +
