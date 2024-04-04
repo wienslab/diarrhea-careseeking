@@ -91,7 +91,9 @@ df <- df %>%
   # whether or not an outbreak description was provided
   mutate(outbreak_desc = ifelse(outbreak == 'No outbreak description' | outbreak == 'Pre outbreak', 0, 1)) %>%
   # set "other" to "any care" for timing (based on descriptions in notes)
-  mutate(time_care = ifelse(time_care == 'Other (write in notes)', 'Any care', time_care))
+  mutate(time_care = ifelse(time_care == 'Other (write in notes)', 'Any care', time_care)) %>%
+  # clean up self or child
+  mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Other', self_or_child))
 
 # main dataset is whether people DID seek care; also create df for when people WOULD seek care
 df_would <- df %>%
@@ -606,13 +608,11 @@ if (!sa) {
 }
 
 # coefficient equations corresponding to each model
-#TODO: add model where we just adjust for methods (get an "adjusted" estimate)
-#TODO: adjust for multiple choice questions (as a covariate, need to make sure that it's a covariate though)
-#TODO: consider converting self_or_child back to categorical, or handling another way eg stratifying (doesn't make sense now)
+#TODO: examine outbreak within case definitions
 stan_mod_eqns <- list(
   'mod1' = '1',
   'mod2' = 'time_care + case_cat',
-  'mod3' = 'recall_time + self_or_child'
+  'mod3' = 'recall_time + time_care'
 )
 ```
 
@@ -639,8 +639,7 @@ sr_dat <- df %>%
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
                                        'Urban and non-urban')),
          recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
-         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
-         self_or_child = ifelse(self_or_child == 'Child', 'Child', 'Self or family member')) %>%
+         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', covs)) %>%
   summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
@@ -751,8 +750,11 @@ for (i in 1:length(covs)) {
 
 ```{r test for confounding with self_or_child}
 
+# data to just adult vs. child
+stan_dat_ac <- stan_dat %>% filter(self_or_child != 'Other')
+
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time')) {
+for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice')) {
   
   stan_model <- paste0('self_or_child-', cov)
   stan_coef_eqn <- cov
@@ -771,10 +773,10 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time')) {
     
     seekrate <- run_analysis_stan(
       model_script = model_script,
-      dat_surveyed = stan_dat$n_did_survey,
-      dat_soughtcare = ifelse(stan_dat$self_or_child == 'Child', 0, 1),
-      dat_covars = stan_dat %>% select_at(cov),
-      re_ids = stan_dat$study_lab,
+      dat_surveyed = stan_dat_ac$n_did_survey,
+      dat_soughtcare = ifelse(stan_dat_ac$self_or_child == 'Child', 0, 1),
+      dat_covars = stan_dat_ac %>% select_at(cov),
+      re_ids = stan_dat_ac$study_lab,
       run_id = stan_run_id,
       coef_eqn = stan_coef_eqn,
       redo = stan_redo
@@ -798,7 +800,7 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time')) {
 ```{r test for confounding with outbreak_desc}
 
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child')) {
+for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   stan_model <- paste0('outbreak_desc-', cov)
   stan_coef_eqn <- cov
@@ -848,7 +850,7 @@ stan_dat_vc <- stan_dat %>% filter(case_cat != 'Gastroenteritis or non-Vc etiolo
 stan_dat_ge <- stan_dat %>% filter(case_cat != 'V cholerae or severe diarrhea')
 
 # loop over covariates for V cholerae or severe diarrhea  -------------------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   stan_model <- paste0('vc_severe-', cov)
   stan_coef_eqn <- cov
@@ -891,7 +893,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child')) {
 }
 
 # loop over covariates for Gastroenteritis or non-Vc etiologies -----------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   stan_model <- paste0('ge_nonvc-', cov)
   stan_coef_eqn <- cov
@@ -1027,11 +1029,11 @@ strata1_dat <- stan_dat %>%
   arrange(time_care, case_cat)
 
 strata2_dat <- stan_dat %>%
-  group_by(recall_time, self_or_child) %>%
+  group_by(recall_time, time_care) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(recall_time, self_or_child)
+  arrange(recall_time, time_care)
 ```
 
 ```{r combine model results}
@@ -1089,7 +1091,7 @@ for (i in file_names) {
 #       because they are more meaningful
 
 cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('recall_time', 'self_or_child'))
+cats_mod3 <- obs_by_cat(stan_dat, c('recall_time', 'time_care'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
@@ -1110,14 +1112,15 @@ mod_ests <- rbind(mod_ests,
                   )
 
 # stratifications below each correspond to:
-#     time_care = 'Any care'
-#     recall_time = 'under30'
+#     time_care == 'Any care'
+#     recall_time == 'under30'
 
 prop_mod2_sub <- prop_strat_mod2 %>%
   filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(recall_timeunder30 == 1)
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0 & 
+           recall_timeunder30 == 1)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
@@ -1136,26 +1139,13 @@ mod_ests <- rbind(mod_ests,
                              )
                   )
 
-# save estimates for Self or family member
-nonout_id <- which(prop_mod3_sub$self_or_child==1)
+# save estimates for methods-adjusted estimate
 mod_ests <- rbind(mod_ests,
-                  data.frame(run_id = 'Self or family member',
+                  data.frame(run_id = 'Adjusted for methods',
                              stan_id = 'prop',
-                             mean = prop_mod3_sub[nonout_id, 'mean'],
-                             lower = prop_mod3_sub[nonout_id, 'lower'],
-                             upper = prop_mod3_sub[nonout_id, 'upper'],
-                             row.names = NULL
-                             )
-                  )
-
-# save estimates for Child
-out_id <- which(prop_mod3_sub$self_or_child==0)
-mod_ests <- rbind(mod_ests,
-                  data.frame(run_id = 'Child',
-                             stan_id = 'prop',
-                             mean = prop_mod3_sub[out_id, 'mean'],
-                             lower = prop_mod3_sub[out_id, 'lower'],
-                             upper = prop_mod3_sub[out_id, 'upper'],
+                             mean = prop_mod3_sub[, 'mean'],
+                             lower = prop_mod3_sub[, 'lower'],
+                             upper = prop_mod3_sub[, 'upper'],
                              row.names = NULL
                              )
                   )
@@ -1258,7 +1248,7 @@ for (uni_id in unique(mod_ests_uni$run_id)) {
 
 ### Tests for potential confounding variables
 
-#### self_or_child
+#### self_or_child (adult vs child)
 
 ```{r self_or_child confounding, results='asis'}
 
@@ -1387,14 +1377,16 @@ In the univariate and bivariate analyses, found that we cannot separate effects 
 1. time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
 2. recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
 
-So we run two analyses below, looking separately at case_cat and self_or_child
+The trends with self_or_chid were also not significant or in the direction we expected, and so focus on methods and case_cat in the multivariate analyses.
+
+We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding betweem those variables.
 
 1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
-2. In the second model, we test self_or_child adjusting for recall_period, assuming that self_or_child is more directly related to care seeking than how the timing of the care seeking question was phrased or whether they had vomiting or other symptoms (this assumption may be less reasonable).
+2. In the second model, we include methods variables: timing of care seeking, and recall period.
 
 #### Factors associated with variation in care seeking rates
 
-Odds that an individual with diarrhea seeks care for themselves or their child in an outbreak context or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself and recall period).
+Odds that an individual with diarrhea seeks care for themselves or their child overall or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself and recall period).
 
 ```{r coefs}
 # mean coefficients
@@ -1406,7 +1398,6 @@ c2 <- mod_ests %>%
          lower = round(lower, 2),
          upper = round(upper, 2))
 
-#TODO: the model 2 results are weird (shouldn't be so high for the 30 day recall period) and weird that child care seeking is lower. may not be appropriate to do this and should also check model convergence
 c3 <- mod_ests %>%
   filter(run_id %in% c('all-mod3'),
          stan_id != 'alpha') %>%
@@ -1416,8 +1407,8 @@ c3 <- mod_ests %>%
          upper = round(upper, 2))
 
 # make a table
-pretty_table(c2, title = 'Model adjusting for timing of care seeking question + case definition')
-pretty_table(c3, title = 'Model adjusting for recall period + whether the question is about self/family member of child')
+pretty_table(c2, title = 'Model adjusting for multiple choice, timing of care seeking question, and case definition')
+pretty_table(c3, title = 'Model adjusting for methods: multiple choice, recall period, and timing of care seeking')
 ```
 
 <br>
@@ -1432,12 +1423,12 @@ Care seeking question variables include recall period and timing of care seeking
 cs <- mod_ests %>%
   filter(stan_id == 'prop') %>%
   dplyr::select(run_id, lower, mean, upper) %>%
-  mutate(run_id = ifelse(run_id == 'all-mod1', '1', run_id))
+  mutate(run_id = ifelse(run_id == 'all-mod1', 'Unadjusted', run_id))
 
 # table
 tabs <- data.frame('Model' = c('Unadjusted', 
                                rep('Stratum: Any care seeking', 3),
-                               rep('Stratum: Recall period 30 days', 2)),
+                               rep('Stratum: Any care seeking + recall period 30', 1)),
                    'Variable' = cs$run_id,
                    'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
 
@@ -1456,10 +1447,12 @@ pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 cs_plot <- cs %>% 
   mutate(facet = c('Unadjusted', 
                    rep('Stratum: Any care seeking', 3),
-                   rep('Stratum: Recall period 30 days', 2))) %>%
-  mutate(facet = factor(facet, levels = c('Unadjusted',
-                                          'Stratum: Any care seeking',
-                                          'Stratum: Recall period 30 days')))
+                   rep('Stratum:\nAny care seeking\n+ recall period 30', 1))) 
+
+cs_plot <- cs_plot %>%
+  mutate(facet = factor(facet, levels = c(unique(cs_plot$facet)[1],
+                                          unique(cs_plot$facet)[3],
+                                          unique(cs_plot$facet)[2])))
 
 # positivity plot
 figs <- ggplot(cs_plot) +
