@@ -608,11 +608,10 @@ if (!sa) {
 }
 
 # coefficient equations corresponding to each model
-#TODO: examine outbreak within case definitions
 stan_mod_eqns <- list(
   'mod1' = '1',
   'mod2' = 'time_care + case_cat',
-  'mod3' = 'recall_time + time_care'
+  'mod3' = 'time_care'
 )
 ```
 
@@ -1020,6 +1019,96 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```
 
+```{r run cholera model to test effect of outbreaks}
+
+# which Stan model to run
+case_strat <- 'vc'
+stan_model <- 'uni-outbreak_desc'
+stan_coef_eqn <- 'outbreak_desc'
+
+# subset to case_strat
+stan_dat_vconly <- stan_dat %>% filter(case_cat == 'V cholerae or severe diarrhea')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model,
+                      ifelse(sa, '-sa', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = stan_dat_vconly$n_did_survey,
+    dat_soughtcare = stan_dat_vconly$n_did,
+    dat_covars = stan_dat_vconly %>% select_at(covs),
+    re_ids = stan_dat_vconly$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+```{r run diarrhea model to test effect of recall period}
+
+# which Stan model to run
+case_strat <- 'dia'
+stan_model <- 'uni-recall_time'
+stan_coef_eqn <- 'recall_time'
+
+# subset to case_strat
+stan_dat_dia <- stan_dat %>% filter(case_cat == 'Diarrhea')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model,
+                      ifelse(sa, '-sa', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = stan_dat_dia$n_did_survey,
+    dat_soughtcare = stan_dat_dia$n_did,
+    dat_covars = stan_dat_dia %>% select_at(covs),
+    re_ids = stan_dat_dia$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
   group_by(time_care, case_cat) %>%
@@ -1029,11 +1118,11 @@ strata1_dat <- stan_dat %>%
   arrange(time_care, case_cat)
 
 strata2_dat <- stan_dat %>%
-  group_by(recall_time, time_care) %>%
+  group_by(time_care) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(recall_time, time_care)
+  arrange(time_care)
 ```
 
 ```{r combine model results}
@@ -1045,7 +1134,7 @@ mod_ests <- data.frame(run_id = NA,
                       row.names = NULL)
 
 file_names <- list.files(here::here('data', 'generated_data', 'care_seeking_estimates'))
-file_names <- file_names[grep('all', file_names)]
+file_names <- file_names[grep('propseek-all|propseek-vc|propseek-dia', file_names)]
 
 for (i in file_names) {
   
@@ -1091,7 +1180,7 @@ for (i in file_names) {
 #       because they are more meaningful
 
 cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('recall_time', 'time_care'))
+cats_mod3 <- obs_by_cat(stan_dat, c('time_care'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
@@ -1113,14 +1202,12 @@ mod_ests <- rbind(mod_ests,
 
 # stratifications below each correspond to:
 #     time_care == 'Any care'
-#     recall_time == 'under30'
 
 prop_mod2_sub <- prop_strat_mod2 %>%
   filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0 & 
-           recall_timeunder30 == 1)
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
@@ -1370,6 +1457,48 @@ for (ge_id in unique(mod_ests_ge$run_id)) {
 
 <br>
 
+### Sub-analyses
+
+#### Vc or severe diarrhea
+
+Is there still an effect of **being in an outbreak** when we subset the data to just case definitions specific to cholera or severe diarrhea (including death)?
+
+```{r}
+
+vc_coef <- mod_ests %>%
+  filter(run_id %in% c('vc-uni-outbreak_desc'),
+         stan_id != 'alpha') %>%
+  dplyr::select(stan_id, mean, lower, upper) %>%
+  mutate(mean = round(mean, 2),
+         lower = round(lower, 2),
+         upper = round(upper, 2))
+
+pretty_table(vc_coef)
+
+```
+
+<br>
+
+#### Diarrhea
+
+Is there still an effect of **recall period** when we subset the data to just case definitions for general diarrhea (not severe or resulting in death)?
+
+```{r}
+
+vc_coef <- mod_ests %>%
+  filter(run_id %in% c('dia-uni-recall_time'),
+         stan_id != 'alpha') %>%
+  dplyr::select(stan_id, mean, lower, upper) %>%
+  mutate(mean = round(mean, 2),
+         lower = round(lower, 2),
+         upper = round(upper, 2))
+
+pretty_table(vc_coef)
+
+```
+
+<br>
+
 ### Multivariate analysis
 
 In the univariate and bivariate analyses, found that we cannot separate effects of:
@@ -1407,8 +1536,8 @@ c3 <- mod_ests %>%
          upper = round(upper, 2))
 
 # make a table
-pretty_table(c2, title = 'Model adjusting for multiple choice, timing of care seeking question, and case definition')
-pretty_table(c3, title = 'Model adjusting for methods: multiple choice, recall period, and timing of care seeking')
+pretty_table(c3, title = 'Model adjusting for timing of care seeking')
+pretty_table(c2, title = 'Model adjusting for timing of care seeking question and case definition')
 ```
 
 <br>
@@ -1427,8 +1556,8 @@ cs <- mod_ests %>%
 
 # table
 tabs <- data.frame('Model' = c('Unadjusted', 
-                               rep('Stratum: Any care seeking', 3),
-                               rep('Stratum: Any care seeking + recall period 30', 1)),
+                               rep('Stratum: Any care seeking; testing case definition', 3),
+                               rep('Stratum: Any care seeking', 1)),
                    'Variable' = cs$run_id,
                    'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
 
@@ -1439,15 +1568,16 @@ pretty_table(tabs)
 
 <br>
 
-```{r, fig.height = 3.5, fig.width = 7}
+```{r, fig.height = 4, fig.width = 8}
 # set colors
+#TODO: there is still some confounding between timing of care seeking and GE, which may be why the post-stratified estimates don't seem to match the beta coefficients; how best to handle this?
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
 cs_plot <- cs %>% 
   mutate(facet = c('Unadjusted', 
-                   rep('Stratum: Any care seeking', 3),
-                   rep('Stratum:\nAny care seeking\n+ recall period 30', 1))) 
+                   rep('Stratum: Any care seeking; testing case definition', 3),
+                   rep('Stratum: Any care seeking', 1))) 
 
 cs_plot <- cs_plot %>%
   mutate(facet = factor(facet, levels = c(unique(cs_plot$facet)[1],
@@ -1476,7 +1606,7 @@ figs
 ### Forest plot
 
 ```{r}
-#TODO: figure like figure 4, grouped by case_cat (maybe also labeled by outbreak, TBD decide after deciding final model structures for multivariate analysis; for example, maybe just label by country and outbreak_desc; might also want to include "adjusted" estimates that account for study methods i.e., mod2 or 3 or a new one)
+#TODO: figure like figure 4, grouped by case_cat, labeled by country and timing of care seeking
 ```
 
 <br>
