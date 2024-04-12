@@ -1571,6 +1571,8 @@ pretty_table(tabs)
 ```{r, fig.height = 4, fig.width = 8}
 # set colors
 #TODO: there is something weird with the gastroenteritis stratification; need to make sure there's not a bug in the code because it should have lower not higher care seeking
+# - The if you take the weighted mean across the data, the trends are in this direction; unweighted, they are not. Not sure why this would cause the problem though as we don't take the mean in the post-strat mean calculation
+# - Overall, proportion seeking care gets estimated higher than the data; should we try a prior shifted to the left to see how this changes things/make sure this isn't all just prior-dependent?
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
