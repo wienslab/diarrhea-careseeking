@@ -596,7 +596,7 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
@@ -1508,10 +1508,10 @@ In the univariate and bivariate analyses, found that we cannot separate effects 
 
 The trends with self_or_chid were also not significant or in the direction we expected, and so focus on methods and case_cat in the multivariate analyses.
 
-We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding betweem those variables.
+We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding betweem=n those variables.
 
 1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
-2. In the second model, we include methods variables: timing of care seeking, and recall period.
+2. In the second model, we include methods variables: timing of care seeking.
 
 #### Factors associated with variation in care seeking rates
 
@@ -1544,7 +1544,7 @@ pretty_table(c2, title = 'Model adjusting for timing of care seeking question an
 
 #### Stratified estimates of care seeking by category
 
-Care seeking question variables include recall period and timing of care seeking. Stratifications currently correspond to questions that refer to 1) any care seeking, and 2) have recall periods <30 days.
+Care seeking question variables include recall period and timing of care seeking. Stratifications currently correspond to questions that refer to any care seeking.
 
 ```{r}
 
@@ -1570,7 +1570,7 @@ pretty_table(tabs)
 
 ```{r, fig.height = 4, fig.width = 8}
 # set colors
-#TODO: there is still some confounding between timing of care seeking and GE, which may be why the post-stratified estimates don't seem to match the beta coefficients; how best to handle this?
+#TODO: there is something weird with the gastroenteritis stratification; need to make sure there's not a bug in the code because it should have lower not higher care seeking
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
@@ -1605,8 +1605,110 @@ figs
 
 ### Forest plot
 
+The "estimated" results are the study-level props from the model that includes time_care and case_cat.
+
 ```{r}
-#TODO: figure like figure 4, grouped by case_cat, labeled by country and timing of care seeking
+# underlying proportion seeking care by study
+propseek <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod2.rds'))
+df_p <- propseek$p
+
+# get mean and 95% CI by study
+study_est <- data.frame(matrix(nrow=0, ncol=11))
+names(study_est) <- c('study_id', 'country_iso3', 'time_care', 'self_or_child', 
+                      'case_cat', 'n_did', 'n_did_survey', 'mean', 'lower', 'upper')
+  
+for (i in 1:ncol(df_p)) {
+  study_est <- rbind(study_est,
+                     data.frame(study_id = stan_dat[i, 'study_id'],
+                                country_iso3 = stan_dat[i, 'country_iso3'],
+                                time_care = stan_dat[i, 'time_care'],
+                                self_or_child = stan_dat[i, 'self_or_child'],
+                                case_cat = stan_dat[i, 'case_cat'],
+                                n_did = stan_dat[i, 'n_did'],
+                                n_did_survey = stan_dat[i, 'n_did_survey'],
+                                mean = mean(df_p[, i][[1]], na.rm = T),
+                                lower = quantile(df_p[, i][[1]], probs = .025, na.rm = T),
+                                upper = quantile(df_p[, i][[1]], probs = .975, na.rm = T)))
+}
+
+# proportion seeking care by study
+study_est <- study_est %>%
+  mutate(p_did = n_did/n_did_survey) %>%
+  group_by(study_id, country_iso3, time_care, self_or_child, case_cat,
+           mean, upper, lower, p_did) %>%
+  # binomial confidence intervals and variance for proportions
+  summarize(p_lower = binomial_ci(p_did, n_did_survey)[[1]],
+            p_upper = binomial_ci(p_did, n_did_survey)[[2]],
+            vi = prop_var(p_did, n_did_survey)) %>%
+  ungroup()
+```
+
+```{r i2, message = TRUE}
+# calculate tau2, between-study heterogeneity or variance of the random effects by study
+tau2 <- quantile(inv.logit(propseek$sigma_re$sigma_re), c(0.025, 0.5, 0.975))
+
+# grab v, within-study sampling variance, dropping the study that reported 0 people seeking care
+vi <- study_est%>%filter(vi!=0)%>%dplyr::select(vi)
+
+# calculate i2
+# https://www.metafor-project.org/doku.php/tips:i2_multilevel_multivariate#:~:text=For%20a%20standard%20random%2Deffects,ith%20i%20t
+k <- nrow(stan_dat)-1 # dropped 1 study with 0 positives
+sum_wi <- sum(1/vi[[1]])
+sum_wi2 <- sum((1/vi[[1]])^2)
+v <- ((k-1)*sum_wi)/(sum_wi^2-sum_wi2)
+i2 <- 100*tau2/(tau2+v)
+
+message('I2: ', paste0(round(i2,5), sep = ', '), '; tau2: ', paste0(round(tau2,5), sep = ', '))
+```
+
+```{r}
+study_est <- study_est %>%
+  # arrange from lowest to highest care seeking
+  arrange(mean) %>%
+  # create study labels
+  mutate(study_lab = paste0(country_iso3, ' - ',
+                            ifelse(self_or_child=='Self', 'Self  - ', 
+                                   ifelse(self_or_child=='Child', 'Child - ', 'Other - ')),
+                            ifelse(time_care=='Any care', 'Any  ', 
+                                   ifelse(time_care=='First source', 'First', 'Prior'))))
+
+# forest plot for diarrhea
+dia_forest <- forest_plot(study_est %>% 
+                     filter(case_cat=='Diarrhea') %>%
+                     mutate(id = 1:nrow(study_est %>% filter(case_cat=='Diarrhea')))) +
+  ggtitle('Diarrhea')
+
+# forest plot for V cholerae or severe diarrhea
+vc_forest <- forest_plot(study_est %>% 
+                        filter(case_cat=='V cholerae or severe diarrhea') %>%
+                        mutate(id = 1:nrow(study_est %>% filter(case_cat=='V cholerae or severe diarrhea')))) +
+  ggtitle('V cholerae or severe diarrhea')
+
+# forest plot for Gastroenteritis or non-Vc etiologies
+ge_forest <- forest_plot(study_est %>% 
+                     filter(case_cat=='Gastroenteritis or non-Vc etiologies') %>%
+                     mutate(id = 1:nrow(study_est %>% filter(case_cat=='Gastroenteritis or non-Vc etiologies')))) +
+  ggtitle('Gastroenteritis or non-Vc etiologies')
+
+# look at unadjusted study estimates by stata
+strat_est <- study_est %>%
+  group_by(time_care, case_cat) %>%
+    summarize(mean = round(mean(mean)*100,1),
+              lower = round(mean(lower)*100,1),
+              upper = round(mean(upper)*100,1)) %>%
+    ungroup()
+```
+
+```{r fig4a, fig.height = 14, fig.width = 10}
+dia_forest
+```
+
+```{r fig4b, fig.height = 3, fig.width = 10}
+vc_forest
+```
+
+```{r fig4c, fig.height = 5, fig.width = 10}
+ge_forest
 ```
 
 <br>

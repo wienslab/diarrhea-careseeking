@@ -46,32 +46,25 @@ pretty_table <- function(intab, title = NULL) {
 forest_plot <- function(plot_dt) {
   
   # set colors
-  pal <- brewer.pal(n=5, name='Dark2')
-  cols <- c('Culture' = pal[1], 'PCR' = pal[2], 'RDT' = pal[3], 'Adjusted' = 'black')
+  cols <- c('Data' = 'darkgreen', 'Estimate' = 'purple')
   
   # make forest plot
   ggplot(plot_dt) +
     # study-level proportion by culture
-    geom_point(aes(y = id, x = Culture_p, color = 'Culture'), shape = 1, size = 0.85) +
-    geom_errorbarh(aes(y = id, xmin = Culture_lower, xmax = Culture_upper, color = 'Culture'), height = 0.1) +
-    # study-level proportion by PCR
-    geom_point(aes(y = id, x = PCR_p, color = 'PCR'), shape = 1, size = 0.85) +
-    geom_errorbarh(aes(y = id, xmin = PCR_lower, xmax = PCR_upper, color = 'PCR'), height = 0.1) +
-    # study-level proportion by RDT
-    geom_point(aes(y = id, x = RDT_p, color = 'RDT'), shape = 1, size = 0.85) +
-    geom_errorbarh(aes(y = id, xmin = RDT_lower, xmax = RDT_upper, color = 'RDT'), height = 0.1) +
-    # study-level underlying proportion
-    geom_point(aes(y = id, x = mean, color = 'Adjusted'), size = 0.95, alpha = 0.7) +
-    geom_errorbarh(aes(y = id, xmin = lower, xmax = upper), height = 0.1, alpha = 0.7) +
+    geom_point(aes(y = id, x = p_did, color = 'Data'), shape = 1, size = 1) +
+    geom_errorbarh(aes(y = id, xmin = p_lower, xmax = p_upper, color = 'Data'), height = 0.2) +
+    # study-level estimated proportion seeking care
+    geom_point(aes(y = id, x = mean, color = 'Estimate'), size = 0.95, alpha = 0.5) +
+    geom_errorbarh(aes(y = id, xmin = lower, xmax = upper, color = 'Estimate'), height = 0.1, alpha = 0.5) +
     # scale axes
-    scale_x_continuous(limits = c(0,1), breaks = c(0,0.25,0.5,0.75,1), name = 'Proportion positive') +
+    scale_x_continuous(limits = c(0,1), breaks = c(0,0.25,0.5,0.75,1), name = 'Proportion seeking care') +
     scale_y_continuous(name = '', breaks = 1:(length(plot_dt$study_lab)),
                        labels = plot_dt$study_lab, 
                        trans = 'reverse') +
     # legend
     scale_color_manual(name = NULL, values = cols) +
     # rotate labels
-    theme_minimal() +
+    theme_classic() +
     theme(panel.spacing = unit(1, 'lines'),
           legend.position = c(0.86, 0.9)) +
     theme(strip.text.y = element_text(angle = 0),
