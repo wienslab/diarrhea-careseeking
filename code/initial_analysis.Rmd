@@ -1570,7 +1570,8 @@ pretty_table(tabs)
 
 ```{r, fig.height = 4, fig.width = 8}
 # set colors
-#TODO: there is still some confounding between timing of care seeking and GE, which may be why the post-stratified estimates don't seem to match the beta coefficients; how best to handle this?
+#TODO: there is still some confounding between timing of care seeking and GE, which may be why the post-stratified estimates don't seem to match the beta coefficients; is it okay to assume that the stratified estimates are right and the beta coeffients are off? or better to just remove this and stick with univariate analyses? 
+#TODO: test this by running the post-strat on the univariate version of the case_cat model
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
