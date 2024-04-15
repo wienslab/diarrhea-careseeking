@@ -6,12 +6,12 @@ data {
   
   // positivity rates from meta-analysis by test
   int<lower=1> N_obs; // number of observations included in main analysis
-  int<lower=1> num_survey[N_obs]; // number of individuals in each study surveyed
-  int<lower=0> num_sought[N_obs]; // number of individuals that sought care
+  array[N_obs] int<lower=1> num_survey; // number of individuals in each study surveyed
+  array[N_obs] int<lower=0> num_sought; // number of individuals that sought care
   
   // random effect
   int<lower=1> N_re; // number of unique random effect categories
-  int<lower=1, upper=N_re> re[N_obs]; // random effect corresponding to observation
+  array[N_obs] int<lower=1, upper=N_re> re; // random effect corresponding to observation
 
   // covariates
   int<lower=1> p_vars; // number of variables to adjust for
