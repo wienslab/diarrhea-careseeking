@@ -596,16 +596,14 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
-# model scripts
+# model script
 if (!sa) {
   model_script <- here::here('code', 'meta_analysis_re.stan')
-} else {
-  model_script <- here::here('code', 'meta_analysis_re_sa.stan')
-}
+} 
 
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
@@ -1019,6 +1017,150 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```
 
+```{r run sensitivity analyses with priors shifted for models 1-3}
+
+for (prior in c('L', 'R')) {
+  
+  # model script for sensitivity analyses with priors shifted left or right
+  model_script <- here::here('code', paste0('meta_analysis_re_sa', prior, '.stan'))
+  
+  # model 1 --------------------------------------------------------------------
+  stan_model <- 'mod1' 
+  stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+  
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        '-sa', prior,
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = stan_dat$n_did,
+      dat_covars = stan_dat %>% select_at(covs),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+  
+  # model 2 --------------------------------------------------------------------
+  stan_model <- 'mod2' 
+  stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+  
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        '-sa', prior,
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = stan_dat$n_did,
+      dat_covars = stan_dat %>% select_at(covs),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+  
+  
+  # model 3 --------------------------------------------------------------------
+  stan_model <- 'mod3' 
+  stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+  
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        '-sa', prior,
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    seekrate <- run_analysis_stan(
+      model_script = model_script,
+      dat_surveyed = stan_dat$n_did_survey,
+      dat_soughtcare = stan_dat$n_did,
+      dat_covars = stan_dat %>% select_at(covs),
+      re_ids = stan_dat$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+  
+}
+
+
+```
+
+
+```{r data by covariate strata}
+strata1_dat <- stan_dat %>%
+  group_by(time_care, case_cat) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care, case_cat)
+
+strata2_dat <- stan_dat %>%
+  group_by(time_care) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care)
+```
+
 ```{r run cholera model to test effect of outbreaks}
 
 # which Stan model to run
@@ -1109,21 +1251,6 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
-```{r data by covariate strata}
-strata1_dat <- stan_dat %>%
-  group_by(time_care, case_cat) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care, case_cat)
-
-strata2_dat <- stan_dat %>%
-  group_by(time_care) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care)
-```
 
 ```{r combine model results}
 mod_ests <- data.frame(run_id = NA,
@@ -1184,11 +1311,19 @@ cats_mod3 <- obs_by_cat(stan_dat, c('time_care'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
+prop_mod1_saL <- stratify('mod1', sa = '-saL', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
+prop_mod1_saR <- stratify('mod1', sa = '-saR', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
 
 # post-stratify to get overall care seeking proportion by strata
 prop_strat_mod2 <- stratify('mod2', 'all', cats_mod2, stan_mod_eqns)[[2]]
-prop_strat_mod3 <- stratify('mod3', 'all', cats_mod3, stan_mod_eqns)[[2]]
+prop_strat_mod2_saL <- stratify('mod2', sa = '-saL', 'all', cats_mod2, stan_mod_eqns)[[2]]
+prop_strat_mod2_saR <- stratify('mod2', sa = '-saR', 'all', cats_mod2, stan_mod_eqns)[[2]]
 
+prop_strat_mod3 <- stratify('mod3', 'all', cats_mod3, stan_mod_eqns)[[2]]
+prop_strat_mod3_saL <- stratify('mod3', sa = '-saL', 'all', cats_mod2, stan_mod_eqns)[[2]]
+prop_strat_mod3_saR <- stratify('mod3', sa = '-saR', 'all', cats_mod2, stan_mod_eqns)[[2]]
+
+# main results ----------------------------------------------------------------
 # save unadjusted post-stratified proportion to mod_est data frame
 mod_ests <- rbind(mod_ests,
                   data.frame(run_id = 'all-mod1',
@@ -1202,7 +1337,6 @@ mod_ests <- rbind(mod_ests,
 
 # stratifications below each correspond to:
 #     time_care == 'Any care'
-
 prop_mod2_sub <- prop_strat_mod2 %>%
   filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
 
@@ -1237,7 +1371,103 @@ mod_ests <- rbind(mod_ests,
                              )
                   )
 
-# tidy results
+# priors shifted left  --------------------------------------------------------
+# save unadjusted post-stratified proportion to mod_est data frame
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'all-mod1-saL',
+                             stan_id = 'prop',
+                             mean = mean(prop_mod1_saL$pos, na.rm = T),
+                             lower = quantile(prop_mod1_saL$pos, probs = .025, na.rm = T),
+                             upper = quantile(prop_mod1_saL$pos, probs = .975, na.rm = T),
+                             row.names = NULL
+                             )
+                  )
+
+# stratifications below each correspond to:
+#     time_care == 'Any care'
+prop_mod2_sub_saL <- prop_strat_mod2_saL %>%
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+prop_mod3_sub_saL <- prop_strat_mod3_saL %>%
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+# save estimates for each case definition category
+prop_mod2_sub_saL <- prop_mod2_sub_saL %>%
+  select_at(names(prop_mod2_sub_saL)[grep("mean|lower|upper|case_cat", names(prop_mod2_sub_saL))])
+
+case_cats <- names(prop_mod2_sub_saL)[grep("case_cat", names(prop_mod2_sub_saL))]
+case_cats <- gsub('case_cat', '', case_cats)
+
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = paste0(c('Diarrhea', case_cats), ' (shift prior left)'),
+                             stan_id = rep('prop', nrow(prop_mod2_sub_saL)),
+                             mean = prop_mod2_sub_saL$mean,
+                             lower = prop_mod2_sub_saL$lower,
+                             upper = prop_mod2_sub_saL$upper,
+                             row.names = NULL
+                             )
+                  )
+
+# save estimates for methods-adjusted estimate
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'Adjusted for methods (shift prior left)',
+                             stan_id = 'prop',
+                             mean = prop_mod3_sub_saL[, 'mean'],
+                             lower = prop_mod3_sub_saL[, 'lower'],
+                             upper = prop_mod3_sub_saL[, 'upper'],
+                             row.names = NULL
+                             )
+                  )
+
+# priors shifted right --------------------------------------------------------
+# save unadjusted post-stratified proportion to mod_est data frame
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'all-mod1-saR',
+                             stan_id = 'prop',
+                             mean = mean(prop_mod1_saR$pos, na.rm = T),
+                             lower = quantile(prop_mod1_saR$pos, probs = .025, na.rm = T),
+                             upper = quantile(prop_mod1_saR$pos, probs = .975, na.rm = T),
+                             row.names = NULL
+                             )
+                  )
+
+# stratifications below each correspond to:
+#     time_care == 'Any care'
+prop_mod2_sub_saR <- prop_strat_mod2_saR %>%
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+prop_mod3_sub_saR <- prop_strat_mod3_saR %>%
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+
+# save estimates for each case definition category
+prop_mod2_sub_saR <- prop_mod2_sub_saR %>%
+  select_at(names(prop_mod2_sub_saR)[grep("mean|lower|upper|case_cat", names(prop_mod2_sub_saR))])
+
+case_cats <- names(prop_mod2_sub_saR)[grep("case_cat", names(prop_mod2_sub_saR))]
+case_cats <- gsub('case_cat', '', case_cats)
+
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = paste0(c('Diarrhea', case_cats), ' (shift prior right)'),
+                             stan_id = rep('prop', nrow(prop_mod2_sub_saR)),
+                             mean = prop_mod2_sub_saR$mean,
+                             lower = prop_mod2_sub_saR$lower,
+                             upper = prop_mod2_sub_saR$upper,
+                             row.names = NULL
+                             )
+                  )
+
+# save estimates for methods-adjusted estimate
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'Adjusted for methods (shift prior right)',
+                             stan_id = 'prop',
+                             mean = prop_mod3_sub_saR[, 'mean'],
+                             lower = prop_mod3_sub_saR[, 'lower'],
+                             upper = prop_mod3_sub_saR[, 'upper'],
+                             row.names = NULL
+                             )
+                  )
+
+# --- tidy all results ---
 mod_ests <- mod_ests %>%
   drop_na() %>%
   mutate(mean=ifelse(stan_id == 'prop', round(mean*100,1), mean),
@@ -1247,14 +1477,27 @@ mod_ests <- mod_ests %>%
 
 #### Posterior distributions of the proportion of people seeking care
 
-```{r figS4, fig.width=7, fig.height=4}
+```{r figS4, fig.width=7, fig.height=9}
 # distributions of alpha
 propseek1 <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1.rds'))
+propseek1_saL <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1-saL.rds'))
+propseek1_saR <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1-saR.rds'))
 
+# prior and posterios
 s4aL <- plot_prior_post(propseek1$alpha$alpha, 
                 'logit(global intercept)',
                 arg1=0, arg2=2, dprior='dnorm') +
   ggtitle('Unadjusted')
+
+s4bL <- plot_prior_post(propseek1_saL$alpha$alpha, 
+                'logit(global intercept)',
+                arg1=-0.9, arg2=2, dprior='dnorm') +
+  ggtitle('Unadjusted - shift prior left')
+
+s4cL <- plot_prior_post(propseek1_saR$alpha$alpha, 
+                'logit(global intercept)',
+                arg1=0.9, arg2=2, dprior='dnorm') +
+  ggtitle('Unadjusted - shift prior right')
 
 
 # distributions of the proportion seeking care
@@ -1264,10 +1507,23 @@ s4aR <- ggplot() +
   theme_classic() +
   xlab('Proportion that sought care') + ggtitle('  ')
 
+s4bR <- ggplot() +
+  geom_histogram(aes(prop_mod1_saL$pos))+
+  xlim(c(0,1)) +
+  theme_classic() +
+  xlab('Proportion that sought care') + ggtitle('  ')
+
+s4cR <- ggplot() +
+  geom_histogram(aes(prop_mod1_saR$pos))+
+  xlim(c(0,1)) +
+  theme_classic() +
+  xlab('Proportion that sought care') + ggtitle('  ')
 
 # plot
 cowplot::plot_grid(s4aL, s4aR,
-                   labels = c('A', ''), ncol = 2)
+                   s4bL, s4bR,
+                   s4cL, s4cR,
+                   labels = c('A', '', 'B', '', 'C', ''), ncol = 2)
 ```
 
 <br>
@@ -1277,18 +1533,24 @@ cowplot::plot_grid(s4aL, s4aR,
 ```{r tabS4}
 # mean adjusted proportion seeking care
 pr2 <- mod_ests %>%
-  filter(run_id %in% c('all-mod1'), 
+  filter(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR'), 
          stan_id == 'prop') %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
 
-# mean adjusted proportion seeking care
-pr2 <- pr2 %>%
-  mutate(variable = c('Unadjusted')) %>%
-  mutate(variable = factor(variable, levels = c('Unadjusted')))
+# # mean adjusted proportion seeking care
+# pr2 <- pr2 %>%
+#   mutate(variable = c('Unadjusted', 
+#                       'Unadjusted - shift prior left', 
+#                       'Unadjusted - shift prior right')) %>%
+#   mutate(variable = factor(variable, levels = c('Unadjusted', 
+#                       'Unadjusted - shift prior left', 
+#                       'Unadjusted - shift prior right')))
 
 # table S4
-tabS4 <- data.frame('Version' = c('Unadjusted'),
+tabS4 <- data.frame('Version' = c('Unadjusted', 
+                                  'Unadjusted - shift prior left', 
+                                  'Unadjusted - shift prior right'),
                     'Proportion' = paste0(pr2[,2],' (',pr2[,1],' - ',pr2[,3],')'))
 
 names(tabS4) <- c('Version', 'Proportion (%)')
@@ -1508,7 +1770,7 @@ In the univariate and bivariate analyses, found that we cannot separate effects 
 
 The trends with self_or_chid were also not significant or in the direction we expected, and so focus on methods and case_cat in the multivariate analyses.
 
-We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding betweem=n those variables.
+We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
 1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
 2. In the second model, we include methods variables: timing of care seeking.
@@ -1552,16 +1814,22 @@ Care seeking question variables include recall period and timing of care seeking
 cs <- mod_ests %>%
   filter(stan_id == 'prop') %>%
   dplyr::select(run_id, lower, mean, upper) %>%
-  mutate(run_id = ifelse(run_id == 'all-mod1', 'Unadjusted', run_id))
+  mutate(run_id = ifelse(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR'), 'Unadjusted', run_id),
+         run_id = gsub(' \\(shift prior left\\)', '', run_id),
+         run_id = gsub(' \\(shift prior right\\)', '', run_id)) %>%
+  unique()
 
 # table
-tabs <- data.frame('Model' = c('Unadjusted', 
-                               rep('Stratum: Any care seeking; testing case definition', 3),
-                               rep('Stratum: Any care seeking', 1)),
+tabs <- data.frame('Version' = c(rep('Main result', 5), 
+                                 rep('Shift prior left', 5), 
+                                 rep('Shift prior right', 5)),
+                    'Model' = rep(c('1', 
+                                    rep('2', 3),
+                                    rep('3', 1)), 3),
                    'Variable' = cs$run_id,
                    'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
 
-names(tabs) <- c('Version', 'Variable', 'Proportion (%)')
+names(tabs) <- c('Version', 'Model', 'Variable', 'Proportion (%)')
 pretty_table(tabs)
 
 ```
@@ -1571,13 +1839,12 @@ pretty_table(tabs)
 ```{r, fig.height = 4, fig.width = 8}
 #TODO: there is something weird with the gastroenteritis stratification; need to make sure there's not a bug in the code because it should have lower not higher care seeking
 # - The if you take the weighted mean across the data, the trends are in this direction; unweighted, they are not. Not sure why this would cause the problem though as we don't take the mean in the post-strat mean calculation
-# - Overall, proportion seeking care gets estimated higher than the data; should we try a prior shifted to the left to see how this changes things/make sure this isn't all just prior-dependent?
 
 # set colors
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
 # update data frame for plotting
-cs_plot <- cs %>% 
+cs_plot <- cs[1:5,] %>% 
   mutate(facet = c('Unadjusted', 
                    rep('Stratum: Any care seeking; testing case definition', 3),
                    rep('Stratum: Any care seeking', 1))) 

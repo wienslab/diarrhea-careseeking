@@ -470,8 +470,9 @@ plot_prior_post <- function(post_draws,
     scale_color_manual(values = c(pal[9], pal[2]), 
                        name = NULL, labels = c('Prior', 'Posterior')) +
     theme_classic() +
+    xlim(-6, 6) +
     xlab(x_lab) + ylab('Density') + 
-    theme(legend.position = c(0.2, 0.7),
+    theme(legend.position = c(0.2, 0.9),
           legend.background=element_blank())
 }
 
@@ -516,11 +517,11 @@ obs_by_cat <- function(dat, covs) {
 # assuming that the proportion of all potential studies that use different methods
 # and case definitions match the proportions we found in the systematic review
 # but we do not include the post-stratified results because they are not meaningful
-stratify <- function(mod, case_strat, cov_cats, mod_eqns) {
+stratify <- function(mod, case_strat, cov_cats, mod_eqns, sa = '') {
   
   # load model draws
   draws <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates',
-                              paste0('propseek-', case_strat, '-', mod, '.rds')))
+                              paste0('propseek-', case_strat, '-', mod, sa, '.rds')))
   
   # extract parameters
   beta <- cbind(draws[grep('alpha', names(draws))],
