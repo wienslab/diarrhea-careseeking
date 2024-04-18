@@ -42,6 +42,40 @@ pretty_table <- function(intab, title = NULL) {
 }
 
 
+# make an odds ratio table include reference categories
+or_table <- function(coef_df, cov_vector = covs, cov_cats_df = cov_cats) {
+  
+  # get odds ratios
+  df_or <- data.frame('Category' = gsub(paste(cov_vector, collapse = '|'), '', coef_df$stan_id),
+                      'Odds ratio' = paste0(round(coef_df[,3],2),' (',
+                                            round(coef_df[,4],2),' - ',
+                                            round(coef_df[,5],2),')'),
+                      'Significant' = ifelse((coef_df[,4] < 1 & coef_df[,5] < 1) | 
+                                               (coef_df[,4] > 1 & coef_df[,5] > 1),
+                                             1, 0)) 
+  
+  # get variable names
+  df_or <- df_or %>%
+    mutate(Category = ifelse(Category == '', '1', Category), # binary variables
+           Variable = gsub(paste(df_or$Category, collapse = '|'), '', coef_df$stan_id),
+           `Odds ratio` = Odds.ratio) %>%
+    dplyr::select(Variable, Category, `Odds ratio`, Significant)
+  
+  # add reference categories
+  df_or <- df_or %>%
+    full_join(cov_cats_df %>% filter(Variable %in% df_or$Variable)) %>%
+    arrange(Variable, Category) %>%
+    mutate(`Odds ratio` = ifelse(Reference == 1, '1 [Reference]', `Odds ratio`)) %>%
+    dplyr::select(-Reference) %>%
+    # tidy significance column
+    mutate(` ` = ifelse(Significant == 0 | is.na(Significant), '', '**')) %>%
+    dplyr::select(-Significant)
+  
+  # return
+  return(df_or)
+}
+
+
 # make a custom forest plot
 forest_plot <- function(plot_dt) {
   

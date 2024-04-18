@@ -651,6 +651,15 @@ case_strat <- 'all'
 
 # add random effect label by observation
 stan_dat <- stan_dat %>% mutate(study_lab = 1:nrow(stan_dat))
+
+# create a template table of all covariates and reference categories (for use when building tables later)
+cov_cats <- sr_dat %>% select_at(covs) %>%
+  mutate(mult_choice = as.character(mult_choice),
+         outbreak_desc = as.character(outbreak_desc)) %>%
+  pivot_longer(covs, names_to = 'Variable', values_to = 'Category') %>%
+  unique() %>% 
+  arrange(Variable, Category) %>%
+  mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 ```
 
 ### Unadjusted estimates
@@ -1538,15 +1547,6 @@ pr2 <- mod_ests %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
 
-# # mean adjusted proportion seeking care
-# pr2 <- pr2 %>%
-#   mutate(variable = c('Unadjusted', 
-#                       'Unadjusted - shift prior left', 
-#                       'Unadjusted - shift prior right')) %>%
-#   mutate(variable = factor(variable, levels = c('Unadjusted', 
-#                       'Unadjusted - shift prior left', 
-#                       'Unadjusted - shift prior right')))
-
 # table S4
 tabS4 <- data.frame('Version' = c('Unadjusted', 
                                   'Unadjusted - shift prior left', 
@@ -1567,30 +1567,12 @@ pretty_table(tabS4)
 
 Odds of seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
 
-```{r univariate odds ratios, results='asis'}
-
+```{r univariate odds ratios}
 mod_ests_uni <- mod_ests %>%
-    filter(grepl('uni', run_id) & stan_id != 'alpha')
+    filter(grepl('all-uni', run_id) & stan_id != 'alpha') %>%
+  or_table()
 
-for (uni_id in unique(mod_ests_uni$run_id)) {
-
-  cov <- gsub('all-uni-', '', uni_id)
-  
-  # pull coefficients
-  coef_uni <- mod_ests_uni %>%
-    filter(run_id == uni_id)
-  
-  # table of univariate ORs
-  uni_or <- data.frame('Variable' = gsub(cov, '', coef_uni$stan_id),
-                       'Odds ratio' = paste0(round(coef_uni[,3],2),' (',
-                                             round(coef_uni[,4],2),' - ',
-                                             round(coef_uni[,5],2),')'))
-   
-  print(pretty_table(uni_or, title = cov))
-  cat('\n')
-  
-}
-
+pretty_table(mod_ests_uni)
 ```
 
 <br>
@@ -1599,60 +1581,24 @@ for (uni_id in unique(mod_ests_uni$run_id)) {
 
 #### self_or_child (adult vs child)
 
-```{r self_or_child confounding, results='asis'}
-
+```{r self_or_child confounding}
 mod_ests_soc <- mod_ests %>%
-    filter(grepl('all-self_or_child', run_id) & stan_id != 'alpha')
+    filter(grepl('all-self_or_child', run_id) & stan_id != 'alpha') %>%
+  or_table()
 
-for (soc_id in unique(mod_ests_soc$run_id)) {
-
-  cov <- gsub('all-self_or_child-', '', soc_id)
-  
-  # pull coefficients
-  coef_soc <- mod_ests_soc %>%
-    filter(run_id == soc_id)
-  
-  # table of univariate ORs
-  soc_or <- data.frame('Variable' = gsub(cov, '', coef_soc$stan_id),
-                       'Odds ratio' = paste0(round(coef_soc[,3],2),' (',
-                                             round(coef_soc[,4],2),' - ',
-                                             round(coef_soc[,5],2),')'))
-   
-  print(pretty_table(soc_or, title = cov))
-  cat('\n')
-  
-}
-
+pretty_table(mod_ests_soc)
 ```
 
 <br>
 
 #### outbreak_desc
 
-```{r outbreak_desc confounding, results='asis'}
-
+```{r outbreak_desc confounding}
 mod_ests_out <- mod_ests %>%
-    filter(grepl('all-outbreak_desc', run_id) & stan_id != 'alpha')
+    filter(grepl('all-outbreak_desc', run_id) & stan_id != 'alpha') %>%
+  or_table()
 
-for (out_id in unique(mod_ests_out$run_id)) {
-
-  cov <- gsub('all-outbreak_desc-', '', out_id)
-  
-  # pull coefficients
-  coef_out <- mod_ests_out %>%
-    filter(run_id == out_id)
-  
-  # table of univariate ORs
-  out_or <- data.frame('Variable' = gsub(cov, '', coef_out$stan_id),
-                       'Odds ratio' = paste0(round(coef_out[,3],2),' (',
-                                             round(coef_out[,4],2),' - ',
-                                             round(coef_out[,5],2),')'))
-   
-  print(pretty_table(out_or, title = cov))
-  cat('\n')
-  
-}
-
+pretty_table(mod_ests_out)
 ```
 
 <br>
@@ -1661,60 +1607,24 @@ for (out_id in unique(mod_ests_out$run_id)) {
 
 ##### V cholerae or severe diarrhea
 
-```{r vc_severe confounding, results='asis'}
-
+```{r vc_severe confounding}
 mod_ests_vc <- mod_ests %>%
-    filter(grepl('all-vc_severe', run_id) & stan_id != 'alpha')
+    filter(grepl('all-vc_severe', run_id) & stan_id != 'alpha') %>%
+  or_table()
 
-for (vc_id in unique(mod_ests_vc$run_id)) {
-
-  cov <- gsub('all-vc_severe-', '', vc_id)
-  
-  # pull coefficients
-  coef_vc <- mod_ests_vc %>%
-    filter(run_id == vc_id)
-  
-  # table of univariate ORs
-  vc_or <- data.frame('Variable' = gsub(cov, '', coef_vc$stan_id),
-                       'Odds ratio' = paste0(round(coef_vc[,3],2),' (',
-                                             round(coef_vc[,4],2),' - ',
-                                             round(coef_vc[,5],2),')'))
-   
-  print(pretty_table(vc_or, title = cov))
-  cat('\n')
-  
-}
-
+pretty_table(mod_ests_vc)
 ```
 
 <br>
 
 ##### Gastroenteritis or non-V cholerae
 
-```{r ge_nonvc confounding, results='asis'}
-
+```{r ge_nonvc confounding}
 mod_ests_ge <- mod_ests %>%
-    filter(grepl('all-ge_nonvc', run_id) & stan_id != 'alpha')
+  filter(grepl('all-ge_nonvc', run_id) & stan_id != 'alpha') %>%
+  or_table()
 
-for (ge_id in unique(mod_ests_ge$run_id)) {
-
-  cov <- gsub('all-ge_nonvc-', '', ge_id)
-  
-  # pull coefficients
-  coef_ge <- mod_ests_ge %>%
-    filter(run_id == ge_id)
-  
-  # table of univariate ORs
-  ge_or <- data.frame('Variable' = gsub(cov, '', coef_ge$stan_id),
-                       'Odds ratio' = paste0(round(coef_ge[,3],2),' (',
-                                             round(coef_ge[,4],2),' - ',
-                                             round(coef_ge[,5],2),')'))
-   
-  print(pretty_table(ge_or, title = cov))
-  cat('\n')
-  
-}
-
+pretty_table(mod_ests_ge)
 ```
 
 <br>
@@ -1726,17 +1636,11 @@ for (ge_id in unique(mod_ests_ge$run_id)) {
 Is there still an effect of **being in an outbreak** when we subset the data to just case definitions specific to cholera or severe diarrhea (including death)?
 
 ```{r}
-
 vc_coef <- mod_ests %>%
-  filter(run_id %in% c('vc-uni-outbreak_desc'),
-         stan_id != 'alpha') %>%
-  dplyr::select(stan_id, mean, lower, upper) %>%
-  mutate(mean = round(mean, 2),
-         lower = round(lower, 2),
-         upper = round(upper, 2))
+  filter(run_id %in% c('vc-uni-outbreak_desc'), stan_id != 'alpha') %>%
+  or_table()
 
 pretty_table(vc_coef)
-
 ```
 
 <br>
@@ -1746,65 +1650,54 @@ pretty_table(vc_coef)
 Is there still an effect of **recall period** when we subset the data to just case definitions for general diarrhea (not severe or resulting in death)?
 
 ```{r}
+dia_coef <- mod_ests %>%
+  filter(run_id %in% c('dia-uni-recall_time'), stan_id != 'alpha') %>%
+  or_table()
 
-vc_coef <- mod_ests %>%
-  filter(run_id %in% c('dia-uni-recall_time'),
-         stan_id != 'alpha') %>%
-  dplyr::select(stan_id, mean, lower, upper) %>%
-  mutate(mean = round(mean, 2),
-         lower = round(lower, 2),
-         upper = round(upper, 2))
-
-pretty_table(vc_coef)
-
+pretty_table(dia_coef)
 ```
 
 <br>
 
 ### Multivariate analysis
 
-In the univariate and bivariate analyses, found that we cannot separate effects of:
+In the above analyses, found that we cannot separate effects of:
 
 1. time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
 2. recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
 
-The trends with self_or_chid were also not significant or in the direction we expected, and so focus on methods and case_cat in the multivariate analyses.
+The trends with self_or_chid were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
 
 We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
 1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
-2. In the second model, we include methods variables: timing of care seeking.
+2. In the second model, we only include methods variables: timing of care seeking.
+
+<br>
 
 #### Factors associated with variation in care seeking rates
 
-Odds that an individual with diarrhea seeks care for themselves or their child overall or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself and recall period).
+Odds that an individual with diarrhea seeks care for themselves or their child overall or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself).
 
 ```{r coefs}
-# mean coefficients
+# pull mean coefficients
 c2 <- mod_ests %>%
-  filter(run_id %in% c('all-mod2'),
-         stan_id != 'alpha') %>%
-  dplyr::select(stan_id, mean, lower, upper) %>%
-  mutate(mean = round(mean, 2),
-         lower = round(lower, 2),
-         upper = round(upper, 2))
+  filter(run_id %in% c('all-mod2'), stan_id != 'alpha')
 
 c3 <- mod_ests %>%
-  filter(run_id %in% c('all-mod3'),
-         stan_id != 'alpha') %>%
-  dplyr::select(stan_id, mean, lower, upper) %>%
-  mutate(mean = round(mean, 2),
-         lower = round(lower, 2),
-         upper = round(upper, 2))
+  filter(run_id %in% c('all-mod3'), stan_id != 'alpha')
 
-# make a table
-pretty_table(c3, title = 'Model adjusting for timing of care seeking')
-pretty_table(c2, title = 'Model adjusting for timing of care seeking question and case definition')
+# make tables
+or_table(c3) %>%
+  pretty_table(title = 'Model including timing of care seeking')
+
+or_table(c2) %>%
+  pretty_table(title = 'Model including timing of care seeking question and case definition')
 ```
 
 <br>
 
-#### Stratified estimates of care seeking by category
+### Stratified estimates of care seeking by category
 
 Care seeking question variables include recall period and timing of care seeking. Stratifications currently correspond to questions that refer to any care seeking.
 
