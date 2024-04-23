@@ -26,30 +26,28 @@ pacman::p_load(
 source(here::here('code', 'utils.R'))
 ```
 
-## Draft outline
+## Outline
 
 #### Our primary question is: What proportion of people with diarrhea seek care at a place that they'd likely get counted (i.e., hospital/clinic) when they have diarrhea?
 
--   Age and sex
--   Symptoms
--   Study methods
--   Urban/rural
--   How study question is phrased
--   Study population
--   Travel distance to health facility\^
--   Health care state/access (at country level)\^
--   Density of population to healthcare providers (country)\^
--   HIC vs LMICs
+1) Look at care seeking in the raw data by:
 
-\^Still need to pull this data
+    +   Symptoms/case definition
+    +   Sampling method
+    +   Study type
+    +   Urban/rural
+    +   How study question is phrased (multiple choice, timing of care seeking, recall period)
+    +   Study population/respondent
+    +   Outbreak setting
+    +   HIC vs. LMIC or geographic region [still need to do]
+    +   Age and sex [still need to do; will be a sub-analysis as we don't have this for all studies]
 
-Additional things to consider:
-
--   Multiple choice questions
--   How question is phrased
--   Whether the above characteristics should be covs or strats
+2) Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
+3) Examine factors associated with care seeking at a hospital or clinical
 
 #### Our secondary question is: Where else do they seek care?
+
+[Still need to do]
 
 <br>
 
@@ -559,14 +557,13 @@ cowplot::plot_grid(f3c, f3d,
 
 <br>
 
-## Preliminary analysis
+## Meta-analysis
 
-Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, we have five broad categories of case definitions (below). Since some of these have few observations (cholera and "other"), we can't run stratifications (which would be ideal). Instead, we'll start by testing these along with other potential covariates in univariate analyses.
+Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below). We'll start by testing these along with other potential covariates in univariate analyses.
 
 i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
-ii. Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
-iii. Cholera (acute watery diarrhea of any severity, including resulting in death)
-iv. Gastroenteritis (diarrhea or vomiting, including specific etiologies eg rotavirus or e coli)
+ii. Cholera (acute watery diarrhea of any severity, including resulting in death) or severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
+iii. Gastroenteritis or other etiologies (diarrhea or vomiting, including specific etiologies eg rotavirus or e coli)
 
 We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
@@ -586,7 +583,7 @@ We'll build generalized linear models with a study-level random intercept follow
         -   urban/rural
         
 
-3. Multivatiate models adjusted for factors identified as significant in multivariate models.
+3. Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
 
 *NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 171 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
@@ -1579,6 +1576,8 @@ pretty_table(mod_ests_uni)
 
 ### Tests for potential confounding variables
 
+In analyses below, the dependent variable is listed in the header.
+
 #### self_or_child (adult vs child)
 
 ```{r self_or_child confounding}
@@ -1670,7 +1669,7 @@ The trends with self_or_chid were also not significant or in the direction we ex
 
 We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
-1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable).
+1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
 2. In the second model, we only include methods variables: timing of care seeking.
 
 <br>
@@ -1699,7 +1698,7 @@ or_table(c2) %>%
 
 ### Stratified estimates of care seeking by category
 
-Care seeking question variables include recall period and timing of care seeking. Stratifications currently correspond to questions that refer to any care seeking.
+Stratifications correspond to questions that refer to any care seeking.
 
 ```{r}
 
@@ -1729,7 +1728,7 @@ pretty_table(tabs)
 
 <br>
 
-```{r, fig.height = 4, fig.width = 8}
+```{r fig5, fig.height = 4, fig.width = 8}
 #TODO: there is something weird with the gastroenteritis stratification; need to make sure there's not a bug in the code because it should have lower not higher care seeking
 # - The if you take the weighted mean across the data, the trends are in this direction; unweighted, they are not. Not sure why this would cause the problem though as we don't take the mean in the post-strat mean calculation
 
@@ -1766,7 +1765,7 @@ figs
 
 <br>
 
-### Forest plot
+### Forest plots
 
 The "estimated" results are the study-level props from the model that includes time_care and case_cat.
 
@@ -1876,20 +1875,19 @@ ge_forest
 
 <br>
 
-## Additional things to consider
+## Additional things to potentially consider
 
 Additional country- or study-level covariates:
 
+-   Geographic region or LMIC vs. HIC
 -   Average travel time to health facilities
 -   Policies on free or affordable healthcare
 -   Ratio of medical practitioners or CHWs to population
--   Geographic region or LMIC vs. HIC
 
 Sub-analyses:
 
 -   age
 -   sex
--   severity
 -   pre-post intervention
 
 Sensitivity analyses:
