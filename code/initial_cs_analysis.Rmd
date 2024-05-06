@@ -661,7 +661,7 @@ df_age <- df %>%
 
 ### Relationship between care seeking and proportion under 5 years
 
-```{r, fig.width = 4}
+```{r, fig.width = 6}
 df_cor <- df_age %>%
   dplyr::select(-age_L, -age_R) %>%
   na.omit()
@@ -684,7 +684,7 @@ ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age distribution')
 ```
 
-```{r, fig.width = 6}
+```{r, fig.width = 7}
 # plot relationship between prop under 5 and care seeking by case definition category
 ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   geom_point(alpha = 0.6, aes(size = n_did_survey)) +
