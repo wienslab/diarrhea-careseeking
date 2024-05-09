@@ -18,8 +18,8 @@ knitr::opts_knit$set(root.dir = here::here())
 ```{r preamble, warning = TRUE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode, here, lubridate, tidyverse, ggplot2, doParallel, boot,
-  sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales
+  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot,
+  sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales, RVAideMemoire
 )
 
 # custom functions
@@ -53,9 +53,15 @@ source(here::here('code', 'utils.R'))
 
 ```{r load and tidy data}
 
-#  load data
+# load systematic review data
 df <- read.csv(here::here('data', 'extracted_data', 'data_extractions.csv'))
 vars <- read.csv(here::here('data', 'extracted_data', 'data_codebook.csv'))
+
+# load world bank income classifications
+wb <- read_xlsx(here::here('data', 'extracted_data', 'wb_income_class.xlsx')) %>%
+  data.frame() %>%
+  rename(country_iso3 = Code,
+         income_group = Income.group)
 
 # set column variable names
 df$Status <- NULL
@@ -86,6 +92,11 @@ df <- df %>%
                          countrycode(country_iso3, 
                                      origin = 'iso3c', 
                                      destination = 'region23'))) %>%
+  # income category as defined by world bank
+  left_join(wb %>% dplyr::select(country_iso3, income_group)) %>%
+  mutate(hic = ifelse(income_group == 'High income', 1, 0),
+         income_group = factor(income_group, levels = c('Low income', 'Lower middle income',
+                                                        'Upper middle income', 'High income'))) %>%
   # whether or not an outbreak description was provided
   mutate(outbreak_desc = ifelse(outbreak == 'No outbreak description' | outbreak == 'Pre outbreak', 0, 1)) %>%
   # set "other" to "any care" for timing (based on descriptions in notes)
@@ -275,7 +286,8 @@ sd <- df %>%
   # format variables
   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
   # sum up number of tests and sample sizes by observation
-  dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'outbreak_desc', 'location_desc')) %>%
+  dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 
+                  'income_group', 'outbreak_desc', 'location_desc')) %>%
   unique() %>%
   dplyr::select(-entry_id) 
 
@@ -345,8 +357,8 @@ df_hosp <- df %>%
   # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking
-  group_by_at(c('entry_id', 'entry_desc', 'study_type', 'sampling_method', 'pop_cat', 
-                'case_cat', 'outbreak_desc', 'location_desc', 
+  group_by_at(c('entry_id', 'entry_desc', 'region', 'study_type', 'sampling_method', 'pop_cat', 
+                'case_cat', 'outbreak_desc', 'location_desc', 'income_group', 'hic',
                 'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
   summarize(n_did_survey = n_did_survey,
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
@@ -355,7 +367,9 @@ df_hosp <- df %>%
   # proportion seeking care
   mutate(prop_seek = n_did/n_did_survey) %>%
   # format variables
-  mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+  mutate(region = ifelse(region %in% c('Eastern Africa', 'Middle Africa', 'Southern Africa', 'Western Africa'), 
+                         'sub-Saharan Africa', region),
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
          mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
          case_cat = ifelse(case_cat == 'Giardiasis', 'Other (list etiologies in notes)', case_cat),
          pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
@@ -485,6 +499,60 @@ cowplot::plot_grid(f2e, f2f,
                    nrow = 2)
 ```
 
+```{r}
+f2g <- plot_seekprop(df_hosp, 'income_group', num_colors=8) +
+  ggtitle('World bank income classification')
+
+# df_hosp %>%
+#   group_by(income_group) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r, fig.width = 6, fig.height = 4}
+cowplot::plot_grid(f2g, labels = c('G'), nrow = 1)
+```
+
+```{r}
+f2h <- plot_seekprop(df_hosp, 'region', num_colors=10) +
+  ggtitle('Geographic region (HIC and LMIC)')
+
+# df_hosp %>%
+#   group_by(region) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r, fig.width = 8, fig.height = 4}
+cowplot::plot_grid(f2h, labels = c('H'), nrow = 1)
+```
+
+```{r}
+f2i <- plot_seekprop(df_hosp %>% filter(hic==0), 'region', num_colors=10) +
+  ggtitle('Geographic region (LMIC)')
+
+# df_hosp %>% filter(hic==0) %>%
+#   group_by(region) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r, fig.width = 6, fig.height = 4}
+cowplot::plot_grid(f2i, labels = c('I'), nrow = 1)
+```
+
 <br>
 
 #### By type of care seeking questions
@@ -557,9 +625,128 @@ cowplot::plot_grid(f3c, f3d,
 
 <br>
 
-## Meta-analysis
+## Care seeking at hospital/clinic by age
 
-Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below). We'll start by testing these along with other potential covariates in univariate analyses.
+```{r}
+# set variables to keep
+vars <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
+          'case_cat', 'outbreak_desc', 'location_desc', 'age_L', 'age_R', 'prop_five', 'strat_age')
+
+df_age <- df %>%
+  # filter to hospital/clinic (not private) and diarrhea (general)
+  filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
+  # format variables, combining some to reduce combinations
+  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
+                           ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
+                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
+                                                         'Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae or severe diarrhea',
+                                                                'Gastroenteritis or non-Vc etiologies'))),
+         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+                                         'Street dweller', 'University student', 'Other',
+                                         'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat),
+         location_desc = ifelse(location_desc == 'Urban', 'Urban',
+                                ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
+                                       'Urban and non-urban')),
+         recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
+         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
+  # aggregate care seeking numbers to study_id and covariate categories ("observations")
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', vars)) %>%
+  summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(propseek = n_did/n_did_survey)
+```
+
+### Relationship between care seeking and proportion under 5 years
+
+```{r, fig.width = 6}
+df_cor <- df_age %>%
+  dplyr::select(-age_L, -age_R) %>%
+  na.omit()
+
+ct <- spearman.ci(df_cor$propseek, df_cor$prop_five)
+ct_p <- cor.test(df_cor$propseek, df_cor$prop_five, method = 'spearman')
+
+# plot relationship between prop under 5 and care seeking overall
+ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+  geom_point(alpha = 0.6, aes(size = n_did_survey)) +
+  theme_bw() +
+  #theme(legend.position = 'bottom') +
+  annotate('text', x = 0.5, y = 1.1, color = 'darkgreen',
+           label = paste0('Spearman rho = ', signif(ct$estimate, 2), 
+                          ' (95% Confidence Interval ', signif(ct$conf.int[[1]],2), 
+                          ' to ', signif(ct$conf.int[[2]],2), ')')) +
+  geom_smooth(method = 'lm',  color='purple')+
+  labs(x = 'Proportion under 5', y = 'Proportion sought care',
+       size = NULL, shape = NULL) +
+  ggtitle('Care seeking at hospital/clinic by age distribution')
+```
+
+```{r, fig.width = 7}
+# plot relationship between prop under 5 and care seeking by case definition category
+ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+  geom_point(alpha = 0.6, aes(size = n_did_survey)) +
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+  geom_smooth(method = 'lm',  color='purple')+
+  labs(x = 'Proportion under 5', y = 'Proportion sought care',
+       size = NULL, shape = NULL) +
+  facet_wrap('case_cat') +
+  ggtitle('Care seeking at hospital/clinic by age and case definition')
+```
+
+```{r, fig.width = 8}
+# plot relationship between prop under 5 and care seeking by income category
+ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+  geom_point(alpha = 0.6, aes(size = n_did_survey)) +
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+  geom_smooth(method = 'lm',  color='purple')+
+  labs(x = 'Proportion under 5', y = 'Proportion sought care at hospital/clinic',
+       size = NULL, shape = NULL) +
+  facet_wrap('income_group', nrow = 1) +
+  ggtitle('Care seeking at hospital/clinic by age and country income')
+```
+
+```{r, fig.width = 8, fig.height = 9}
+# plot relationship between prop under 5 and care seeking by case definition and income category
+ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+  geom_point(alpha = 0.6, aes(size = n_did_survey)) +
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+  geom_smooth(method = 'lm',  color='purple')+
+  labs(x = 'Proportion under 5', y = 'Proportion sought care at hospital/clinic',
+       size = NULL, shape = NULL) +
+  facet_grid(income_group ~ case_cat) +
+  ggtitle('Care seeking at hospital/clinic by age, income, and case definition')
+```
+
+<br>
+
+### Studies with care seeking stratified by age
+
+We have data from 11 studies that report healthcare seeking at a hospital/clinic by age groups
+
+```{r}
+df_age_strat <- df_age %>%
+  filter(strat_age == 1) %>%
+  group_by_at('study_id') %>%
+  mutate(n_strats = n()) %>%
+  ungroup() %>%
+  filter(n_strats > 1) %>%
+  # classify age cats as either under or over 5 (regardless of proportion)
+  #TODO: need to think more about how to group and then code these; e.g., what do do when they do under vs over 15
+  mutate(strat_u5 = ifelse(age_R < 5, 1, 0),
+         strat_o5 = ifelse(age_L >= 5, 1, 0))
+```
+
+<br>
+
+## Meta-analysis for LMICs
+
+Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms in LMICs. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below). We'll start by testing these along with other potential covariates in univariate analyses.
 
 i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
 ii. Cholera (acute watery diarrhea of any severity, including resulting in death) or severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
@@ -618,6 +805,8 @@ covs <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
 # proportion seeking care from meta-analysis primary dataset
 # aggregate across stratifications that we're not including as covariates or stratifications
 sr_dat <- df %>%
+  # filter out high-income countries
+  filter(hic == 0) %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # format variables, combining some to reduce combinations
