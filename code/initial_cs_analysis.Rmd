@@ -605,8 +605,8 @@ if (!sa) {
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'time_care + case_cat',
-  'mod3' = 'time_care'
+  'mod2' = 'time_care + mult_choice + case_cat',
+  'mod3' = 'time_care + mult_choice'
 )
 ```
 
@@ -1150,23 +1150,6 @@ for (prior in c('L', 'R')) {
 
 ```
 
-
-```{r data by covariate strata}
-strata1_dat <- stan_dat %>%
-  group_by(time_care, case_cat) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care, case_cat)
-
-strata2_dat <- stan_dat %>%
-  group_by(time_care) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care)
-```
-
 ```{r run cholera model to test effect of outbreaks}
 
 # which Stan model to run
@@ -1257,6 +1240,21 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
+```{r data by covariate strata}
+strata1_dat <- stan_dat %>%
+  group_by(time_care, mult_choice, case_cat) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care, mult_choice, case_cat)
+
+strata2_dat <- stan_dat %>%
+  group_by(time_care, mult_choice) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care, mult_choice)
+```
 
 ```{r combine model results}
 mod_ests <- data.frame(run_id = NA,
@@ -1312,8 +1310,8 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('time_care'))
+cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'mult_choice', 'case_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('time_care', 'mult_choice'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
@@ -1343,11 +1341,12 @@ mod_ests <- rbind(mod_ests,
 
 # stratifications below each correspond to:
 #     time_care == 'Any care'
+#     mult_choice == 1
 prop_mod2_sub <- prop_strat_mod2 %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0 & mult_choice == 1)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0 & mult_choice == 1)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
