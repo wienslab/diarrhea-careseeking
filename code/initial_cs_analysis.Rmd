@@ -18,7 +18,7 @@ knitr::opts_knit$set(root.dir = here::here())
 ```{r preamble, warning = TRUE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot,
+  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot, meta,
   sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales, RVAideMemoire
 )
 
@@ -118,24 +118,6 @@ df_would <- df %>%
 df <- df %>%
   filter(!is.na(n_did_survey)) %>%
   dplyr::select(-n_would_survey, -n_would)
-```
-
-```{r aggregate stratifications}
-# # variables to keep
-# keep_vars <- c('study_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'outbreak_desc',
-#                'sampling_start', 'sampling_end', 'TL', 'TR', 'region', 'country_iso3', 'admin0', 
-#                'mult_choice', 'time_care', 'self_or_child', 'recall_time', 'location_type')
-# 
-# # aggregate stratifications by taking weighted mean
-# # this will be our main analysis dataset
-# df <- df %>%
-#   group_by_at(keep_vars) %>%
-#   summarize(prop_five = ifelse(!is.na(n_would_survey), weighted.mean(prop_five, n_would_survey, na.rm=T),
-#                                ifelse(!is.na(n_did_survey), weighted.mean(prop_five, n_did_survey, na.rm=T, NA))),
-#             #TODO: need to think carefully about how these should be aggregated, given mult choice, strats, entry_ids, etc.
-#             # stick with entry_id for now for the data plots
-#             n_cases_tested = sum(n_cases_tested, na.rm = TRUE)) %>%
-#   ungroup()
 ```
 
 ## Systematic review
@@ -653,17 +635,17 @@ cowplot::plot_grid(f3c, f3d,
 ## Care seeking at hospital/clinic by age
 
 ```{r}
-#TODO: consider pulling non-primary dataset here; would need to double check that age-stratified entries flagged in this collumn no not overlap
+#TODO: consider pulling non-primary dataset here; would need to double check that age-stratified entries flagged in this column no not overlap
 
 # set variables to keep
 vars <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
-          'case_cat', 'outbreak_desc', 'location_desc', 'age_L', 'age_R', 'prop_five', 'strat_age')
+          'case_cat', 'outbreak_desc', 'location_desc', 'prop_five', 'strat_age')
 
 df_age <- df %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
-  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', vars)) %>%
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', vars, 'age_L', 'age_R')) %>%
   summarize(n_did_survey = n_did_survey,
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
@@ -691,7 +673,6 @@ df_age <- df %>%
 
 ```{r, fig.width = 6}
 df_cor <- df_age %>%
-  dplyr::select(-age_L, -age_R) %>%
   na.omit()
 
 ct <- spearman.ci(df_cor$prop_seek, df_cor$prop_five)
@@ -774,46 +755,6 @@ cowplot::plot_grid(f2age)
 ```
 ```{r, fig.width = 7, fig.height = 3}
 cowplot::plot_grid(f2age + facet_wrap('case_cat'))
-```
-
-```{r}
-#TODO: use metafor to look at proportion seeking care overall (either in this subset or in full dataset, or both)
-#TODO: use metafor or our logistic regression to test for difference in proportions for children and adults
-```
-
-<br>
-
-### Studies with care seeking stratified by age
-
-We have data from 10 studies that report healthcare seeking at a hospital/clinic by age groups under/over five
-
-```{r}
-df_age_strat <- df_age %>%
-  filter(strat_age == 1) %>%
-  group_by_at('study_id') %>%
-  mutate(n_strats = n()) %>%
-  ungroup() %>%
-  filter(n_strats > 1) %>%
-  # remove the study the looks only at 0-15 and 16-44
-  filter(study_id != 49) %>%
-  # fill age age L and R NA values
-  mutate(age_L = ifelse(is.na(age_L), 0, age_L),
-         age_R = ifelse(is.na(age_R), 99, age_R)) %>%
-  # classify age cats as either under or over 5 (regardless of proportion)
-  mutate(under_five = ifelse(age_R <= 5, 1, 0)) %>%
-  # aggregate by under/over five
-  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
-                'recall_time', 'case_cat', 'under_five')) %>%
-  summarize(n_did_survey = sum(n_did_survey), 
-            n_did = sum(n_did)) %>%
-  ungroup() %>%
-  unique() %>%
-  # proportion seeking care
-  mutate(prop_seek = n_did/n_did_survey)
-```
-
-```{r}
-#TODO: use metafor or our logistic regression to test for difference in proportions for children and adults
 ```
 
 <br>
@@ -903,7 +844,8 @@ sr_dat <- df %>%
   summarize(n_did_survey = sum(n_did_survey), 
             n_did = sum(n_did)) %>%
   ungroup() %>%
-  unique()
+  unique() %>%
+  mutate(propseek = n_did/n_did_survey)
 
 # subset input data to diarrhea case definition
 #stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
@@ -1504,6 +1446,128 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
+```{r sub-analysis by age 1}
+# subset data
+#NB: still don't find significant differences when subset by case definition, although the etiologies approach significance
+df_meta1 <- df_age %>% 
+  filter(prop_five == 0 | prop_five == 1) %>%
+  filter(hic == 0) %>%
+  arrange(prop_seek)
+
+# add random effect variable
+df_meta1 <- df_meta1 %>% mutate(study_lab = 1:nrow(df_meta1))
+
+# which Stan model to run
+covs <- 'prop_five'
+stan_model <- 'all_age' 
+stan_coef_eqn <- 'prop_five'
+case_strat <- 'all'
+stan_redo <- FALSE
+model_script <- here::here('code', 'meta_analysis_re.stan')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model)
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = df_meta1$n_did_survey,
+    dat_soughtcare = df_meta1$n_did,
+    dat_covars = df_meta1 %>% select_at(covs),
+    re_ids = df_meta1$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+```{r sub-analysis by age 2}
+# prep data
+df_age_strat <- df_age %>%
+  filter(strat_age == 1) %>%
+  filter(hic == 0) %>%
+  group_by_at('study_id') %>%
+  mutate(n_strats = n()) %>%
+  ungroup() %>%
+  filter(n_strats > 1) %>%
+  # remove the study the looks only at 0-15 and 16-44
+  filter(study_id != 49) %>%
+  # aggregate by under/over five
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+                'recall_time', 'case_cat', 'prop_five')) %>%
+  summarize(n_did_survey = sum(n_did_survey), 
+            n_did = sum(n_did)) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(prop_seek = n_did/n_did_survey)
+
+# subset data
+df_meta2 <- df_age_strat %>% 
+  arrange(prop_seek)
+
+# add random effect variable
+df_meta2 <- df_meta2 %>% mutate(study_lab = 1:nrow(df_meta2))
+
+# which Stan model to run
+covs <- 'prop_five'
+stan_model <- 'match_age' 
+stan_coef_eqn <- 'prop_five'
+case_strat <- 'all'
+stan_redo <- FALSE
+model_script <- here::here('code', 'meta_analysis_re.stan')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model)
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = df_meta2$n_did_survey,
+    dat_soughtcare = df_meta2$n_did,
+    dat_covars = df_meta2 %>% select_at(covs),
+    re_ids = df_meta2$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
   group_by(time_care, case_cat) %>%
@@ -1819,6 +1883,85 @@ pretty_table(tabS4)
 #   flextable() %>%
 #   save_as_docx(path = here::here('code/tables/tableS4.docx'))
 ```
+
+<br>
+
+#### RE meta-anaysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 32}
+
+ma_nobayes <- metaprop(n_did, n_did_survey, data = arrange(sr_dat, propseek), 
+                       studlab = paste0(sr_dat$study_id, '_', sr_dat$country_iso3), 
+                       method = 'GLMM', common = FALSE)
+
+ma_nobayes
+forest(ma_nobayes)
+
+```
+
+<br>
+
+### Sub-analyses by age
+
+#### Studies that are either only adults or only children
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here. 
+
+```{r or children adults}
+age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
+  pivot_longer(covs, names_to = 'Variable', values_to = 'Category') %>%
+  unique() %>% 
+  arrange(Variable, Category) %>%
+  mutate(Reference = ifelse(duplicated(Variable), 0, 1),
+         Category = as.character(Category))
+
+mod_ests_age1 <- mod_ests %>%
+    filter(grepl('all-all_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age1)
+```
+
+##### RE meta-analysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 32}
+# run meta-analysis with subgroup by age
+ma_age1 <- metaprop(n_did, n_did_survey, data = df_meta1, 
+                    subgroup = df_meta1$prop_five,
+                    studlab = paste0(df_meta1$study_id, '_', df_meta1$country_iso3), 
+                    method = 'GLMM', common = FALSE)
+
+ma_age1
+forest(ma_age1)
+```
+
+<br>
+
+#### Studies with care seeking stratified by age
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs. 
+
+```{r or children adults matched}
+mod_ests_age2 <- mod_ests %>%
+    filter(grepl('all-match_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age2)
+```
+
+##### RE meta-analysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 8}
+# run meta-analysis with subgroup by age
+ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2, 
+                    subgroup = df_meta2$prop_five,
+                    studlab = paste0(df_meta2$study_id, '_', df_meta2$country_iso3), 
+                    method = 'GLMM', common = FALSE)
+
+ma_age2
+forest(ma_age2)
+```
+
 
 <br>
 
