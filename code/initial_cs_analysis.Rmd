@@ -30,26 +30,35 @@ source(here::here('code', 'utils.R'))
 
 #### Our primary question is: What proportion of people with diarrhea seek care at a place that they'd likely get counted (i.e., hospital/clinic) when they have diarrhea?
 
-1) Look at care seeking in the raw data by:
+1)  Look at care seeking in the raw data by:
 
-    +   Symptoms/case definition
-    +   Sampling method
-    +   Study type
-    +   Urban/rural
-    +   How study question is phrased (multiple choice, timing of care seeking, recall period)
-    +   Study population/respondent
-    +   Outbreak setting
-    +   HIC vs. LMIC or geographic region
-    +   Age
+    -   Symptoms/case definition
+    -   Sampling method
+    -   Study type
+    -   Urban/rural
+    -   How study question is phrased (multiple choice, timing of care seeking, recall period)
+    -   Study population/respondent
+    -   Outbreak setting
+    -   Income group
+    -   Geographic region
+    -   Age
 
-2) Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
-3) Compare with results if we were to run a RE meta-analysis using default settings in metafor/meta package
-4) Examine differences by age in studies with age stratifications
-5) Examine factors associated with care seeking at a hospital or clinical
+2)  Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
+
+3)  Compare with results if we were to run a RE meta-analysis using default settings in metafor/meta package
+
+4)  Examine differences by age in studies with age stratifications
+
+5)  Examine factors associated with care seeking at a hospital or clinical
 
 #### Our secondary question is: Where else do they seek care?
 
-[Still need to do]
+1)  Look at care seeking in the raw data by variables that came out as key in main analysis:
+
+    -   Symptoms/case definition
+    -   Income group
+    -   Timing of care seeking
+    -   Age
 
 <br>
 
@@ -671,7 +680,9 @@ df_age <- df %>%
   mutate(prop_seek = n_did/n_did_survey)
 ```
 
-### Relationship between care seeking and proportion under 5 years
+#### Relationship between care seeking and proportion under 5 years {.tabset}
+
+##### Overall
 
 ```{r, fig.width = 6}
 df_cor <- df_age %>%
@@ -695,6 +706,10 @@ ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age distribution')
 ```
 
+<br>
+
+##### By case definition
+
 ```{r, fig.width = 7}
 # plot relationship between prop under 5 and care seeking by case definition category
 ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
@@ -708,6 +723,10 @@ ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age and case definition')
 ```
 
+<br>
+
+##### By income group
+
 ```{r, fig.width = 8}
 # plot relationship between prop under 5 and care seeking by income category
 ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
@@ -720,6 +739,10 @@ ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   facet_wrap('income_group', nrow = 1) +
   ggtitle('Care seeking at hospital/clinic by age and country income')
 ```
+
+<br>
+
+##### By case definition and income group
 
 ```{r, fig.width = 8, fig.height = 9}
 # plot relationship between prop under 5 and care seeking by case definition and income category
@@ -736,7 +759,7 @@ ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
 
 <br>
 
-### Studies with either only kids or only adults
+#### Studies with either only kids or only adults
 
 ```{r}
 f2age <- plot_seekprop(df_age %>% filter(prop_five == 0 | prop_five == 1), 'prop_five', num_colors=2) +
@@ -755,6 +778,7 @@ f2age <- plot_seekprop(df_age %>% filter(prop_five == 0 | prop_five == 1), 'prop
 ```{r, fig.width = 3, fig.height = 3}
 cowplot::plot_grid(f2age)
 ```
+
 ```{r, fig.width = 7, fig.height = 3}
 cowplot::plot_grid(f2age + facet_wrap('case_cat'))
 ```
@@ -772,22 +796,21 @@ iii. Gastroenteritis or other etiologies (diarrhea or vomiting, including specif
 We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
 1.  Unadjusted
+
 2.  Univariate models adjusted individually for:
 
-    a. Study methodology and population:
+    a.  Study methodology and population:
         -   case definition
         -   timing of care seeking
         -   regarding self or child
         -   recall period
         -   multiple choice questions
         -   study population
-
-    b. Contextual factors:
+    b.  Contextual factors:
         -   outbreak
         -   urban/rural
-        
 
-3. Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
+3.  Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
 
 *NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 171 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
@@ -867,7 +890,7 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 ```
 
-### Unadjusted estimates
+### Unadjusted estimates {.tabset}
 
 ```{r run unadjusted Stan models}
 
@@ -1567,7 +1590,6 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
-
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
   group_by(time_care, case_cat) %>%
@@ -1807,7 +1829,9 @@ mod_ests <- mod_ests %>%
          upper=ifelse(stan_id == 'prop', round(upper*100,1), upper))
 ```
 
-#### Posterior distributions of the proportion of people seeking care
+#### Bayesian approach
+
+##### Posterior distributions of the proportion of people seeking care
 
 ```{r figS4, fig.width=7, fig.height=9}
 # distributions of alpha
@@ -1860,7 +1884,7 @@ cowplot::plot_grid(s4aL, s4aR,
 
 <br>
 
-#### Estimated proportion that seek care
+##### Estimated proportion that seek care
 
 ```{r tabS4}
 # mean adjusted proportion seeking care
@@ -1888,7 +1912,7 @@ pretty_table(tabS4)
 
 #### RE meta-anaysis a la 'meta'
 
-```{r, fig.width = 8, fig.height = 32}
+```{r, fig.width = 8, fig.height = 31}
 
 ma_nobayes <- metaprop(n_did, n_did_survey, data = arrange(sr_dat, propseek), 
                        studlab = paste0(sr_dat$study_id, '_', sr_dat$country_iso3), 
@@ -1903,9 +1927,11 @@ forest(ma_nobayes)
 
 ### Sub-analyses by age
 
-#### Studies that are either only adults or only children
+#### Studies that are either only adults or only children {.tabset}
 
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here. 
+##### Bayesian approach
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
 
 ```{r or children adults}
 age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
@@ -1922,9 +1948,11 @@ mod_ests_age1 <- mod_ests %>%
 pretty_table(mod_ests_age1)
 ```
 
+<br>
+
 ##### RE meta-analysis a la 'meta'
 
-```{r, fig.width = 8, fig.height = 32}
+```{r, fig.width = 8, fig.height = 28}
 # run meta-analysis with subgroup by age
 ma_age1 <- metaprop(n_did, n_did_survey, data = df_meta1, 
                     subgroup = df_meta1$prop_five,
@@ -1937,9 +1965,11 @@ forest(ma_age1)
 
 <br>
 
-#### Studies with care seeking stratified by age
+#### Studies with care seeking stratified by age {.tabset}
 
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs. 
+##### Bayesian approach
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
 
 ```{r or children adults matched}
 mod_ests_age2 <- mod_ests %>%
@@ -1949,9 +1979,11 @@ mod_ests_age2 <- mod_ests %>%
 pretty_table(mod_ests_age2)
 ```
 
+<br>
+
 ##### RE meta-analysis a la 'meta'
 
-```{r, fig.width = 8, fig.height = 8}
+```{r, fig.width = 8, fig.height = 7}
 # run meta-analysis with subgroup by age
 ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2, 
                     subgroup = df_meta2$prop_five,
@@ -1961,7 +1993,6 @@ ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2,
 ma_age2
 forest(ma_age2)
 ```
-
 
 <br>
 
@@ -1979,7 +2010,7 @@ pretty_table(mod_ests_uni)
 
 <br>
 
-### Tests for potential confounding variables
+### Tests for potential confounding {.tabset}
 
 In analyses below, the dependent variable is listed in the header.
 
@@ -2067,15 +2098,15 @@ pretty_table(dia_coef)
 
 In the above analyses, found that we cannot separate effects of:
 
-1. time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
-2. recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
+1.  time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
+2.  recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
 
 The trends with self_or_chid were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
 
 We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
-1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
-2. In the second model, we only include methods variables: timing of care seeking.
+1.  In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
+2.  In the second model, we only include methods variables: timing of care seeking.
 
 <br>
 
@@ -2419,6 +2450,41 @@ floc5b <- plot_seekprop(df_locs, 'self_or_child', num_colors=3) +
 
 floc5b
 ```
+
+<br>
+
+## Summary of key results
+
+##### 1) Found the following trends in care seeking at hospital/clinic in the raw data:
+
+-   Care seeking higher in an outbreak and for severe diarrhea or cholera
+-   Variation in care seeking by LMIC/HIC tricky to separate from case definition
+-   The way the care seeking question is asked influences care seeking, particularly timing of care, recall period, and whether the question is about self or child
+
+##### 2) Found some trends towards higher care seeking at hospital/clinic for younger ages:
+
+-   Very weak (not significant) positive correlation between proportion under 5 and proportion that sought care overall
+-   Studies conducted only among children reported higher care seeking on average than studies conducted only among adults
+-   This trend held for diarrhea and gastroenteritis but not for severe diarrhea or cholera
+
+##### 3) Found high variation between studies, resulting in wide uncertainty around global estimates of proportion seeking care at hospitals/clinics
+
+-   Wide range in study-level estimates and global estimate credible intervals, very high I2
+-   Estimated proportion seeking care varied between 4 modeling approaches (3 different priors for Bayesian GLM, and non-Bayesian RE meta-analysis): 35% to 51%.
+
+##### 4) The only factor that was clearly and consistently associated with variation in care seeking at hospitals/clinics was diarrhea case definition:
+
+-   In univariate analysis, found that case definition, being in an outbreak, and being a caregiver of a patient at a health facility (as oppose to at home) were associated with higher odds of seeking care, while having a longer recall period was associated with lower odds of seeking care.
+-   In bivariate analysis, found that we could not separate the effects of 1) recall period, case definition, and whether the study was about an individual or their child, or 2) recall period, case definition, and whether the study took place during an outbreak.
+-   In sub-analysis, there was no longer an effect of being in an outbreak when sub-setting to just severe diarrhea or cholera, and there was no longer an effect of recall period when sub-setting to just general diarrhea.
+-   In multivariate analysis, found that odds of seeking care for severe diarrhea or cholera were significantly higher than for general diarrhea, OR 3.15 (95% CrI 1.41-6.09), adjusting for timing of care seeking.
+
+##### 5) Found the following trends in care seeking at other sources:
+
+-   Hospitals/clinics are the most common source of care seeking outside the home across all categories examined
+-   Seeking care from traditional healers was reported very rarely across all categories examined
+-   Health posts and community health workers (CWH) are more commonly sought in low-income countries and as a first source of care
+-   Care seeking anywhere outside the home was notably higher for an individual's child than for an individual themselves
 
 <br>
 
