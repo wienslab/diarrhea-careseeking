@@ -39,11 +39,13 @@ source(here::here('code', 'utils.R'))
     +   How study question is phrased (multiple choice, timing of care seeking, recall period)
     +   Study population/respondent
     +   Outbreak setting
-    +   HIC vs. LMIC or geographic region [still need to do]
-    +   Age and sex [still need to do; will be a sub-analysis as we don't have this for all studies]
+    +   HIC vs. LMIC or geographic region
+    +   Age
 
 2) Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
-3) Examine factors associated with care seeking at a hospital or clinical
+3) Compare with results if we were to run a RE meta-analysis using default settings in metafor/meta package
+4) Examine differences by age in studies with age stratifications
+5) Examine factors associated with care seeking at a hospital or clinical
 
 #### Our secondary question is: Where else do they seek care?
 
@@ -632,7 +634,7 @@ cowplot::plot_grid(f3c, f3d,
 
 <br>
 
-## Care seeking at hospital/clinic by age
+### Care seeking at hospital/clinic by age
 
 ```{r}
 #TODO: consider pulling non-primary dataset here; would need to double check that age-stratified entries flagged in this column no not overlap
@@ -1458,7 +1460,6 @@ df_meta1 <- df_age %>%
 df_meta1 <- df_meta1 %>% mutate(study_lab = 1:nrow(df_meta1))
 
 # which Stan model to run
-covs <- 'prop_five'
 stan_model <- 'all_age' 
 stan_coef_eqn <- 'prop_five'
 case_strat <- 'all'
@@ -1477,7 +1478,7 @@ if (!file.exists(out_est_file) | stan_redo) {
     model_script = model_script,
     dat_surveyed = df_meta1$n_did_survey,
     dat_soughtcare = df_meta1$n_did,
-    dat_covars = df_meta1 %>% select_at(covs),
+    dat_covars = df_meta1 %>% select(prop_five),
     re_ids = df_meta1$study_lab,
     run_id = stan_run_id,
     coef_eqn = stan_coef_eqn,
@@ -1527,7 +1528,6 @@ df_meta2 <- df_age_strat %>%
 df_meta2 <- df_meta2 %>% mutate(study_lab = 1:nrow(df_meta2))
 
 # which Stan model to run
-covs <- 'prop_five'
 stan_model <- 'match_age' 
 stan_coef_eqn <- 'prop_five'
 case_strat <- 'all'
@@ -1546,7 +1546,7 @@ if (!file.exists(out_est_file) | stan_redo) {
     model_script = model_script,
     dat_surveyed = df_meta2$n_did_survey,
     dat_soughtcare = df_meta2$n_did,
-    dat_covars = df_meta2 %>% select_at(covs),
+    dat_covars = df_meta2 %>% select(prop_five),
     re_ids = df_meta2$study_lab,
     run_id = stan_run_id,
     coef_eqn = stan_coef_eqn,
@@ -1909,7 +1909,7 @@ Odds of seeking care for diarrhea for adults vs. children, not adjusting for any
 
 ```{r or children adults}
 age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
-  pivot_longer(covs, names_to = 'Variable', values_to = 'Category') %>%
+  pivot_longer('prop_five', names_to = 'Variable', values_to = 'Category') %>%
   unique() %>% 
   arrange(Variable, Category) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1),
@@ -2280,27 +2280,160 @@ ge_forest
 
 <br>
 
-## Additional things to potentially consider
+## Where else do people seek care?
 
-Additional country- or study-level covariates:
+### Data
 
--   Geographic region or LMIC vs. HIC
--   Average travel time to health facilities
+```{r}
+df_locs <- df %>%
+  # aggregate care seeking
+  group_by_at(c('entry_id', 'entry_desc', 'region', 'location_type', 'study_type', 'sampling_method', 'pop_cat',
+                'case_cat', 'outbreak_desc', 'location_desc', 'income_group', 'hic',
+                'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(prop_seek = n_did/n_did_survey) %>%
+  # format variables
+  mutate(region = ifelse(region %in% c('Eastern Africa', 'Middle Africa', 'Southern Africa', 'Western Africa'),
+                         'sub-Saharan Africa', region),
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
+         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+                                         'Street dweller', 'University student'), 'Other', pop_cat),
+         recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time == 15, '14-15 days',
+                                          ifelse(recall_time > 15 & recall_time <= 30, '27-30 days',
+                                                 ifelse(recall_time > 30 & recall_time <= 90, '42-90 days',
+                                                        ifelse(recall_time > 90, '170-365 days', 'Unknown'))))),
+         recall_time = factor(recall_time,
+                              levels = c('2-7 days', '14-15 days', '27-30 days', '42-90 days', '170-365 days', 'Unknown'))) %>%
+  # factor variables
+  mutate(study_type = factor(study_type,
+                             levels = c('Survey', 'Surveillance',
+                                        'Intervention', 'Case control')),
+         sampling_method = factor(sampling_method,
+                                  levels = c('Cluster', 'Systematic',
+                                             'Simple random', 'All cases or households',
+                                             'Stratified', 'Other')),
+         location_desc = factor(location_desc,
+                                levels = c('Rural', 'Urban', 'Urban and Rural',
+                                           'Peri-Urban', 'Urban and Peri-Urban', 'IDP or Refugee Camp')),
+         location_type = factor(location_type, 
+                                levels = c('Any care outside home', 'Hospital/Clinic', 'Private Hospital/Clinic', 'Public Hospital/Clinic',
+                                           'Other', 'Pharmacy', 'CHW', 'Health post', 'Traditional Healer', 'Friends/Family')))
+```
+
+#### Overall proportion seeking care by source
+
+```{r, fig.width = 10}
+floc1 <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+# df_locs %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+
+floc1
+```
+
+#### By source and study characteristic {.tabset}
+
+##### Case definition
+
+```{r, fig.width = 10, fig.height = 10}
+floc2a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc2a + facet_wrap('case_cat', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc2b <- plot_seekprop(df_locs, 'case_cat', num_colors=3) +
+  facet_wrap('location_type', ncol = 2)
+
+floc2b
+```
+
+##### Income group
+
+```{r, fig.width = 10, fig.height = 10}
+floc3a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc3a + facet_wrap('income_group', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc3b <- plot_seekprop(df_locs, 'income_group', num_colors=4) +
+  facet_wrap('location_type', ncol = 2)
+
+floc3b
+```
+
+##### Timing of care seeking
+
+```{r, fig.width = 10, fig.height = 10}
+floc4a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc4a + facet_wrap('time_care', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc4b <- plot_seekprop(df_locs, 'time_care', num_colors=4) +
+  facet_wrap('location_type', ncol = 2)
+
+floc4b
+```
+
+##### Self or child
+
+```{r, fig.width = 10, fig.height = 10}
+floc5a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc5a + facet_wrap('self_or_child', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc5b <- plot_seekprop(df_locs, 'self_or_child', num_colors=3) +
+  facet_wrap('location_type', ncol = 2)
+
+floc5b
+```
+
+<br>
+
+## Additional things to consider
+
+Sensitivity analyses (Skye found no differences):
+
+-   study quality stratifications based on critical appraisals
+
+Additional country- or study-level covariates to explore (Marissa working on):
+
 -   Policies on free or affordable healthcare
 -   Ratio of medical practitioners or CHWs to population
 
-Sub-analyses:
-
--   age
--   sex
--   pre-post intervention
-
-Sensitivity analyses:
-
--   study quality stratifications based on critical appraisals
--   drop non-standard populations (e.g., at a hospital) or other categories
-
-Supplementary analyses:
+Supplementary analyses (potential, in rough order of importance):
 
 -   would you seek care
 -   assumptions about single-choice answers and where else people may seek care
