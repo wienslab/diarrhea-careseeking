@@ -18,7 +18,7 @@ knitr::opts_knit$set(root.dir = here::here())
 ```{r preamble, warning = TRUE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot,
+  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot, meta,
   sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales, RVAideMemoire
 )
 
@@ -30,24 +30,35 @@ source(here::here('code', 'utils.R'))
 
 #### Our primary question is: What proportion of people with diarrhea seek care at a place that they'd likely get counted (i.e., hospital/clinic) when they have diarrhea?
 
-1) Look at care seeking in the raw data by:
+1)  Look at care seeking in the raw data by:
 
-    +   Symptoms/case definition
-    +   Sampling method
-    +   Study type
-    +   Urban/rural
-    +   How study question is phrased (multiple choice, timing of care seeking, recall period)
-    +   Study population/respondent
-    +   Outbreak setting
-    +   HIC vs. LMIC or geographic region [still need to do]
-    +   Age and sex [still need to do; will be a sub-analysis as we don't have this for all studies]
+    -   Symptoms/case definition
+    -   Sampling method
+    -   Study type
+    -   Urban/rural
+    -   How study question is phrased (multiple choice, timing of care seeking, recall period)
+    -   Study population/respondent
+    -   Outbreak setting
+    -   Income group
+    -   Geographic region
+    -   Age
 
-2) Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
-3) Examine factors associated with care seeking at a hospital or clinical
+2)  Estimate proportion seeking care at hospital or clinic overall, following methods from Wiens et al PLOS Med
+
+3)  Compare with results if we were to run a RE meta-analysis using default settings in metafor/meta package
+
+4)  Examine differences by age in studies with age stratifications
+
+5)  Examine factors associated with care seeking at a hospital or clinical
 
 #### Our secondary question is: Where else do they seek care?
 
-[Still need to do]
+1)  Look at care seeking in the raw data by variables that came out as key in main analysis:
+
+    -   Symptoms/case definition
+    -   Income group
+    -   Timing of care seeking
+    -   Age
 
 <br>
 
@@ -102,7 +113,13 @@ df <- df %>%
   # set "other" to "any care" for timing (based on descriptions in notes)
   mutate(time_care = ifelse(time_care == 'Other (write in notes)', 'Any care', time_care)) %>%
   # clean up self or child
-  mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Other', self_or_child))
+  mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Other', self_or_child)) %>%
+  # create standard case definitions
+  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
+                           ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
+                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
+                                                         'Cholera (watery diarrhea)', 'Cholera death'), 'Severe diarrhea or cholera',
+                                                                'Gastroenteritis or non-Vc etiologies'))))
 
 # main dataset is whether people DID seek care; also create df for when people WOULD seek care
 df_would <- df %>%
@@ -112,24 +129,6 @@ df_would <- df %>%
 df <- df %>%
   filter(!is.na(n_did_survey)) %>%
   dplyr::select(-n_would_survey, -n_would)
-```
-
-```{r aggregate stratifications}
-# # variables to keep
-# keep_vars <- c('study_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'outbreak_desc',
-#                'sampling_start', 'sampling_end', 'TL', 'TR', 'region', 'country_iso3', 'admin0', 
-#                'mult_choice', 'time_care', 'self_or_child', 'recall_time', 'location_type')
-# 
-# # aggregate stratifications by taking weighted mean
-# # this will be our main analysis dataset
-# df <- df %>%
-#   group_by_at(keep_vars) %>%
-#   summarize(prop_five = ifelse(!is.na(n_would_survey), weighted.mean(prop_five, n_would_survey, na.rm=T),
-#                                ifelse(!is.na(n_did_survey), weighted.mean(prop_five, n_did_survey, na.rm=T, NA))),
-#             #TODO: need to think carefully about how these should be aggregated, given mult choice, strats, entry_ids, etc.
-#             # stick with entry_id for now for the data plots
-#             n_cases_tested = sum(n_cases_tested, na.rm = TRUE)) %>%
-#   ungroup()
 ```
 
 ## Systematic review
@@ -371,7 +370,6 @@ df_hosp <- df %>%
                          'sub-Saharan Africa', region),
          outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
          mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
-         case_cat = ifelse(case_cat == 'Giardiasis', 'Other (list etiologies in notes)', case_cat),
          pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student'), 'Other', pop_cat),
          recall_time = ifelse(recall_time < 14, '2-7 days',
@@ -501,7 +499,8 @@ cowplot::plot_grid(f2e, f2f,
 
 ```{r}
 f2g <- plot_seekprop(df_hosp, 'income_group', num_colors=8) +
-  ggtitle('World bank income classification')
+  ggtitle('World bank income classification & case definition') +
+  facet_wrap('case_cat', ncol = 1)
 
 # df_hosp %>%
 #   group_by(income_group) %>%
@@ -513,7 +512,7 @@ f2g <- plot_seekprop(df_hosp, 'income_group', num_colors=8) +
 #   pretty_table()
 ```
 
-```{r, fig.width = 6, fig.height = 4}
+```{r, fig.width = 5, fig.height = 9}
 cowplot::plot_grid(f2g, labels = c('G'), nrow = 1)
 ```
 
@@ -551,6 +550,25 @@ f2i <- plot_seekprop(df_hosp %>% filter(hic==0), 'region', num_colors=10) +
 
 ```{r, fig.width = 6, fig.height = 4}
 cowplot::plot_grid(f2i, labels = c('I'), nrow = 1)
+```
+
+```{r}
+f2j <- plot_seekprop(df_hosp %>% filter(hic==0), 'region', num_colors=10) +
+  ggtitle('Geographic region (LMIC) & case definition') +
+  facet_wrap('case_cat', ncol = 1)
+
+# df_hosp %>% filter(hic==0) %>%
+#   group_by(region) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r, fig.width = 7, fig.height = 9}
+cowplot::plot_grid(f2j, labels = c('J'), nrow = 1)
 ```
 
 <br>
@@ -625,23 +643,26 @@ cowplot::plot_grid(f3c, f3d,
 
 <br>
 
-## Care seeking at hospital/clinic by age
+### Care seeking at hospital/clinic by age
 
 ```{r}
+#TODO: consider pulling non-primary dataset here; would need to double check that age-stratified entries flagged in this column no not overlap
+
 # set variables to keep
 vars <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
-          'case_cat', 'outbreak_desc', 'location_desc', 'age_L', 'age_R', 'prop_five', 'strat_age')
+          'case_cat', 'outbreak_desc', 'location_desc', 'prop_five', 'strat_age')
 
 df_age <- df %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
+  # aggregate care seeking to entry_id, accounting for multiple choice questions
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', vars, 'age_L', 'age_R')) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
   # format variables, combining some to reduce combinations
-  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
-                           ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
-                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
-                                                         'Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae or severe diarrhea',
-                                                                'Gastroenteritis or non-Vc etiologies'))),
-         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+  mutate(pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student', 'Other',
                                          'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
@@ -651,26 +672,27 @@ df_age <- df %>%
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', vars)) %>%
-  summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
-            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  summarize(n_did_survey = sum(n_did_survey), 
+            n_did = sum(n_did)) %>%
   ungroup() %>%
   unique() %>%
   # proportion seeking care
-  mutate(propseek = n_did/n_did_survey)
+  mutate(prop_seek = n_did/n_did_survey)
 ```
 
-### Relationship between care seeking and proportion under 5 years
+#### Relationship between care seeking and proportion under 5 years {.tabset}
+
+##### Overall
 
 ```{r, fig.width = 6}
 df_cor <- df_age %>%
-  dplyr::select(-age_L, -age_R) %>%
   na.omit()
 
-ct <- spearman.ci(df_cor$propseek, df_cor$prop_five)
-ct_p <- cor.test(df_cor$propseek, df_cor$prop_five, method = 'spearman')
+ct <- spearman.ci(df_cor$prop_seek, df_cor$prop_five)
+ct_p <- cor.test(df_cor$prop_seek, df_cor$prop_five, method = 'spearman')
 
 # plot relationship between prop under 5 and care seeking overall
-ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   geom_point(alpha = 0.6, aes(size = n_did_survey)) +
   theme_bw() +
   #theme(legend.position = 'bottom') +
@@ -684,9 +706,13 @@ ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age distribution')
 ```
 
+<br>
+
+##### By case definition
+
 ```{r, fig.width = 7}
 # plot relationship between prop under 5 and care seeking by case definition category
-ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   geom_point(alpha = 0.6, aes(size = n_did_survey)) +
   theme_bw() +
   theme(legend.position = 'bottom') +
@@ -697,9 +723,13 @@ ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age and case definition')
 ```
 
+<br>
+
+##### By income group
+
 ```{r, fig.width = 8}
 # plot relationship between prop under 5 and care seeking by income category
-ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   geom_point(alpha = 0.6, aes(size = n_did_survey)) +
   theme_bw() +
   theme(legend.position = 'bottom') +
@@ -710,9 +740,13 @@ ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   ggtitle('Care seeking at hospital/clinic by age and country income')
 ```
 
+<br>
+
+##### By case definition and income group
+
 ```{r, fig.width = 8, fig.height = 9}
 # plot relationship between prop under 5 and care seeking by case definition and income category
-ggplot(df_cor, aes(y=propseek, x = prop_five)) +
+ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
   geom_point(alpha = 0.6, aes(size = n_did_survey)) +
   theme_bw() +
   theme(legend.position = 'bottom') +
@@ -725,21 +759,28 @@ ggplot(df_cor, aes(y=propseek, x = prop_five)) +
 
 <br>
 
-### Studies with care seeking stratified by age
-
-We have data from 11 studies that report healthcare seeking at a hospital/clinic by age groups
+#### Studies with either only kids or only adults
 
 ```{r}
-df_age_strat <- df_age %>%
-  filter(strat_age == 1) %>%
-  group_by_at('study_id') %>%
-  mutate(n_strats = n()) %>%
-  ungroup() %>%
-  filter(n_strats > 1) %>%
-  # classify age cats as either under or over 5 (regardless of proportion)
-  #TODO: need to think more about how to group and then code these; e.g., what do do when they do under vs over 15
-  mutate(strat_u5 = ifelse(age_R < 5, 1, 0),
-         strat_o5 = ifelse(age_L >= 5, 1, 0))
+f2age <- plot_seekprop(df_age %>% filter(prop_five == 0 | prop_five == 1), 'prop_five', num_colors=2) +
+  ggtitle('Children (1) or adults (0)')
+
+# df_hosp %>% filter(hic==0) %>%
+#   group_by(region) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
+```{r, fig.width = 3, fig.height = 3}
+cowplot::plot_grid(f2age)
+```
+
+```{r, fig.width = 7, fig.height = 3}
+cowplot::plot_grid(f2age + facet_wrap('case_cat'))
 ```
 
 <br>
@@ -755,22 +796,21 @@ iii. Gastroenteritis or other etiologies (diarrhea or vomiting, including specif
 We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
 1.  Unadjusted
+
 2.  Univariate models adjusted individually for:
 
-    a. Study methodology and population:
+    a.  Study methodology and population:
         -   case definition
         -   timing of care seeking
         -   regarding self or child
         -   recall period
         -   multiple choice questions
         -   study population
-
-    b. Contextual factors:
+    b.  Contextual factors:
         -   outbreak
         -   urban/rural
-        
 
-3. Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
+3.  Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
 
 *NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 171 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
@@ -809,13 +849,14 @@ sr_dat <- df %>%
   filter(hic == 0) %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
+  # aggregate care seeking to entry_id, accounting for multiple choice questions
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
   # format variables, combining some to reduce combinations
-  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
-                           ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
-                                  ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
-                                                         'Cholera (watery diarrhea)', 'Cholera death'), 'V cholerae or severe diarrhea',
-                                                                'Gastroenteritis or non-Vc etiologies'))),
-         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+  mutate(pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student', 'Other',
                                          'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
@@ -824,11 +865,12 @@ sr_dat <- df %>%
          recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
-  group_by_at(c('study_id', 'country_iso3', 'region', covs)) %>%
-  summarize(n_did_survey = ifelse(mult_choice == 0, sum(n_did_survey), max(n_did_survey)), 
-            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
+  summarize(n_did_survey = sum(n_did_survey), 
+            n_did = sum(n_did)) %>%
   ungroup() %>%
-  unique()
+  unique() %>%
+  mutate(propseek = n_did/n_did_survey)
 
 # subset input data to diarrhea case definition
 #stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
@@ -848,82 +890,7 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 ```
 
-### Prior predictive checks
-
-```{r run prior predictive checks for model 1}
-
-# which Stan model to run
-stan_model <- 'mod1' 
-stan_coef_eqn <- stan_mod_eqns[[stan_model]]
-
-# set model id to include in filename
-stan_run_id <- paste0(case_strat, '-', stan_model, 
-                      '-priorcheck',
-                      ifelse(sa, '-sa', ''),
-                      ifelse(test, '-test', ''))
-
-# file to save to
-out_est_file <- here::here('data', 'generated_data', 'prior_pred_checks',
-                           paste0('propseek-', stan_run_id, '.rds'))
-
-if (!file.exists(out_est_file) | stan_redo) {
-  seekrate <- run_prior_checks(
-    model_script = here::here('code', 'prior_pred_checks.stan'),
-    dat_surveyed = stan_dat$n_did_survey,
-    dat_covars = stan_dat %>% select_at(covs),
-    re_ids = stan_dat$study_lab,
-    run_id = stan_run_id,
-    coef_eqn = stan_coef_eqn,
-    redo = stan_redo
-  )
-
-  saveRDS(seekrate, out_est_file)
-  
-  # check model convergence and other diagnostics
-  stan_out_file <- here::here("data", "generated_data", "prior_pred_checks", 
-                              paste0("stan_fit_", stan_run_id,".rds"))
-  stan_est <- readRDS(stan_out_file)
-  stan_est$cmdstan_diagnose()
-  #shinystan::launch_shinystan(stan_est)
-
-} else {
-  seekrate <- readRDS(out_est_file)
-}
-```
-
-```{r plot prior checks, fig.width = 8}
-# distributions of alpha
-priorcheck1_file <- here::here('data', 'generated_data', 'prior_pred_checks', 'propseek-all-mod1-priorcheck.rds')
-priorcheck1 <- readRDS(priorcheck1_file)
-
-# proportion that sought care
-prop_priorcheck1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns,
-                             draws_file = priorcheck1_file)[[1]]
-
-# prior and posteriors
-pal <- brewer.pal(11, 'PRGn')
-s3aL <- plot_prior_post(priorcheck1$alpha$alpha, 
-                'logit(global intercept)',
-                arg1=0, arg2=2, dprior='dnorm') +
-  ggtitle('Unadjusted') +
-  scale_color_manual(values = c(pal[9], pal[2]), 
-                     name = NULL, labels = c('Prior', 'Prior sampled'))
-
-s3aR <- ggplot() +
-  geom_histogram(aes(prop_priorcheck1$pos))+
-  xlim(c(0,1)) +
-  theme_classic() +
-  ggtitle('Prior predictive distribution') +
-  xlab('Proportion that sought care')
-
-# plot
-cowplot::plot_grid(s3aL, s3aR,
-                   #s3bL, s3bR,
-                   #s3cL, s3cR,
-                   labels = c('A', ''), ncol = 2)
-```
-
-### Unadjusted estimates
+### Unadjusted estimates {.tabset}
 
 ```{r run unadjusted Stan models}
 
@@ -1114,9 +1081,9 @@ for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_cho
 
 # data to just look at either diarrhea and 1) vc or severe, or 2) gastro or non-vc
 stan_dat_vc <- stan_dat %>% filter(case_cat != 'Gastroenteritis or non-Vc etiologies')
-stan_dat_ge <- stan_dat %>% filter(case_cat != 'V cholerae or severe diarrhea')
+stan_dat_ge <- stan_dat %>% filter(case_cat != 'Severe diarrhea or cholera')
 
-# loop over covariates for V cholerae or severe diarrhea  -------------------------------
+# loop over covariates for Severe diarrhea or cholera  -------------------------------
 for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   stan_model <- paste0('vc_severe-', cov)
@@ -1414,23 +1381,6 @@ for (prior in c('L', 'R')) {
 
 ```
 
-
-```{r data by covariate strata}
-strata1_dat <- stan_dat %>%
-  group_by(time_care, case_cat) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care, case_cat)
-
-strata2_dat <- stan_dat %>%
-  group_by(time_care) %>%
-  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
-            median = round(median(n_did/n_did_survey)*100,1)) %>%
-  ungroup() %>%
-  arrange(time_care)
-```
-
 ```{r run cholera model to test effect of outbreaks}
 
 # which Stan model to run
@@ -1439,7 +1389,7 @@ stan_model <- 'uni-outbreak_desc'
 stan_coef_eqn <- 'outbreak_desc'
 
 # subset to case_strat
-stan_dat_vconly <- stan_dat %>% filter(case_cat == 'V cholerae or severe diarrhea')
+stan_dat_vconly <- stan_dat %>% filter(case_cat == 'Severe diarrhea or cholera')
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
@@ -1521,6 +1471,140 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
+```{r sub-analysis by age 1}
+# subset data
+#NB: still don't find significant differences when subset by case definition, although the etiologies approach significance
+df_meta1 <- df_age %>% 
+  filter(prop_five == 0 | prop_five == 1) %>%
+  filter(hic == 0) %>%
+  arrange(prop_seek)
+
+# add random effect variable
+df_meta1 <- df_meta1 %>% mutate(study_lab = 1:nrow(df_meta1))
+
+# which Stan model to run
+stan_model <- 'all_age' 
+stan_coef_eqn <- 'prop_five'
+case_strat <- 'all'
+stan_redo <- FALSE
+model_script <- here::here('code', 'meta_analysis_re.stan')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model)
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = df_meta1$n_did_survey,
+    dat_soughtcare = df_meta1$n_did,
+    dat_covars = df_meta1 %>% select(prop_five),
+    re_ids = df_meta1$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+```{r sub-analysis by age 2}
+# prep data
+df_age_strat <- df_age %>%
+  filter(strat_age == 1) %>%
+  filter(hic == 0) %>%
+  group_by_at('study_id') %>%
+  mutate(n_strats = n()) %>%
+  ungroup() %>%
+  filter(n_strats > 1) %>%
+  # remove the study the looks only at 0-15 and 16-44
+  filter(study_id != 49) %>%
+  # aggregate by under/over five
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+                'recall_time', 'case_cat', 'prop_five')) %>%
+  summarize(n_did_survey = sum(n_did_survey), 
+            n_did = sum(n_did)) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(prop_seek = n_did/n_did_survey)
+
+# subset data
+df_meta2 <- df_age_strat %>% 
+  arrange(prop_seek)
+
+# add random effect variable
+df_meta2 <- df_meta2 %>% mutate(study_lab = 1:nrow(df_meta2))
+
+# which Stan model to run
+stan_model <- 'match_age' 
+stan_coef_eqn <- 'prop_five'
+case_strat <- 'all'
+stan_redo <- FALSE
+model_script <- here::here('code', 'meta_analysis_re.stan')
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model)
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = model_script,
+    dat_surveyed = df_meta2$n_did_survey,
+    dat_soughtcare = df_meta2$n_did,
+    dat_covars = df_meta2 %>% select(prop_five),
+    re_ids = df_meta2$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+```{r data by covariate strata}
+strata1_dat <- stan_dat %>%
+  group_by(time_care, case_cat) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care, case_cat)
+
+strata2_dat <- stan_dat %>%
+  group_by(time_care) %>%
+  summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
+            median = round(median(n_did/n_did_survey)*100,1)) %>%
+  ungroup() %>%
+  arrange(time_care)
+```
 
 ```{r combine model results}
 mod_ests <- data.frame(run_id = NA,
@@ -1745,7 +1829,9 @@ mod_ests <- mod_ests %>%
          upper=ifelse(stan_id == 'prop', round(upper*100,1), upper))
 ```
 
-#### Posterior distributions of the proportion of people seeking care
+#### Bayesian approach
+
+##### Posterior distributions of the proportion of people seeking care
 
 ```{r figS4, fig.width=7, fig.height=9}
 # distributions of alpha
@@ -1798,7 +1884,7 @@ cowplot::plot_grid(s4aL, s4aR,
 
 <br>
 
-#### Estimated proportion that seek care
+##### Estimated proportion that seek care
 
 ```{r tabS4}
 # mean adjusted proportion seeking care
@@ -1824,6 +1910,92 @@ pretty_table(tabS4)
 
 <br>
 
+#### RE meta-anaysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 31}
+
+ma_nobayes <- metaprop(n_did, n_did_survey, data = arrange(sr_dat, propseek), 
+                       studlab = paste0(sr_dat$study_id, '_', sr_dat$country_iso3), 
+                       method = 'GLMM', common = FALSE)
+
+ma_nobayes
+forest(ma_nobayes)
+
+```
+
+<br>
+
+### Sub-analyses by age
+
+#### Studies that are either only adults or only children {.tabset}
+
+##### Bayesian approach
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
+
+```{r or children adults}
+age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
+  pivot_longer('prop_five', names_to = 'Variable', values_to = 'Category') %>%
+  unique() %>% 
+  arrange(Variable, Category) %>%
+  mutate(Reference = ifelse(duplicated(Variable), 0, 1),
+         Category = as.character(Category))
+
+mod_ests_age1 <- mod_ests %>%
+    filter(grepl('all-all_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age1)
+```
+
+<br>
+
+##### RE meta-analysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 28}
+# run meta-analysis with subgroup by age
+ma_age1 <- metaprop(n_did, n_did_survey, data = df_meta1, 
+                    subgroup = df_meta1$prop_five,
+                    studlab = paste0(df_meta1$study_id, '_', df_meta1$country_iso3), 
+                    method = 'GLMM', common = FALSE)
+
+ma_age1
+forest(ma_age1)
+```
+
+<br>
+
+#### Studies with care seeking stratified by age {.tabset}
+
+##### Bayesian approach
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
+
+```{r or children adults matched}
+mod_ests_age2 <- mod_ests %>%
+    filter(grepl('all-match_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age2)
+```
+
+<br>
+
+##### RE meta-analysis a la 'meta'
+
+```{r, fig.width = 8, fig.height = 7}
+# run meta-analysis with subgroup by age
+ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2, 
+                    subgroup = df_meta2$prop_five,
+                    studlab = paste0(df_meta2$study_id, '_', df_meta2$country_iso3), 
+                    method = 'GLMM', common = FALSE)
+
+ma_age2
+forest(ma_age2)
+```
+
+<br>
+
 ### Univariate analyses
 
 Odds of seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
@@ -1838,7 +2010,7 @@ pretty_table(mod_ests_uni)
 
 <br>
 
-### Tests for potential confounding variables
+### Tests for potential confounding {.tabset}
 
 In analyses below, the dependent variable is listed in the header.
 
@@ -1868,7 +2040,7 @@ pretty_table(mod_ests_out)
 
 #### case_cat
 
-##### V cholerae or severe diarrhea
+##### Severe diarrhea or cholera
 
 ```{r vc_severe confounding}
 mod_ests_vc <- mod_ests %>%
@@ -1926,15 +2098,15 @@ pretty_table(dia_coef)
 
 In the above analyses, found that we cannot separate effects of:
 
-1. time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
-2. recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
+1.  time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
+2.  recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
 
 The trends with self_or_chid were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
 
 We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
-1. In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
-2. In the second model, we only include methods variables: timing of care seeking.
+1.  In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
+2.  In the second model, we only include methods variables: timing of care seeking.
 
 <br>
 
@@ -2104,11 +2276,11 @@ dia_forest <- forest_plot(study_est %>%
                      mutate(id = 1:nrow(study_est %>% filter(case_cat=='Diarrhea')))) +
   ggtitle('Diarrhea')
 
-# forest plot for V cholerae or severe diarrhea
+# forest plot for Severe diarrhea or cholera
 vc_forest <- forest_plot(study_est %>% 
-                        filter(case_cat=='V cholerae or severe diarrhea') %>%
-                        mutate(id = 1:nrow(study_est %>% filter(case_cat=='V cholerae or severe diarrhea')))) +
-  ggtitle('V cholerae or severe diarrhea')
+                        filter(case_cat=='Severe diarrhea or cholera') %>%
+                        mutate(id = 1:nrow(study_est %>% filter(case_cat=='Severe diarrhea or cholera')))) +
+  ggtitle('Severe diarrhea or cholera')
 
 # forest plot for Gastroenteritis or non-Vc etiologies
 ge_forest <- forest_plot(study_est %>% 
@@ -2139,27 +2311,195 @@ ge_forest
 
 <br>
 
-## Additional things to potentially consider
+## Where else do people seek care?
 
-Additional country- or study-level covariates:
+### Data
 
--   Geographic region or LMIC vs. HIC
--   Average travel time to health facilities
+```{r}
+df_locs <- df %>%
+  # aggregate care seeking
+  group_by_at(c('entry_id', 'entry_desc', 'region', 'location_type', 'study_type', 'sampling_method', 'pop_cat',
+                'case_cat', 'outbreak_desc', 'location_desc', 'income_group', 'hic',
+                'mult_choice', 'time_care', 'self_or_child', 'recall_time')) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
+  # proportion seeking care
+  mutate(prop_seek = n_did/n_did_survey) %>%
+  # format variables
+  mutate(region = ifelse(region %in% c('Eastern Africa', 'Middle Africa', 'Southern Africa', 'Western Africa'),
+                         'sub-Saharan Africa', region),
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
+         pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
+                                         'Street dweller', 'University student'), 'Other', pop_cat),
+         recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time == 15, '14-15 days',
+                                          ifelse(recall_time > 15 & recall_time <= 30, '27-30 days',
+                                                 ifelse(recall_time > 30 & recall_time <= 90, '42-90 days',
+                                                        ifelse(recall_time > 90, '170-365 days', 'Unknown'))))),
+         recall_time = factor(recall_time,
+                              levels = c('2-7 days', '14-15 days', '27-30 days', '42-90 days', '170-365 days', 'Unknown'))) %>%
+  # factor variables
+  mutate(study_type = factor(study_type,
+                             levels = c('Survey', 'Surveillance',
+                                        'Intervention', 'Case control')),
+         sampling_method = factor(sampling_method,
+                                  levels = c('Cluster', 'Systematic',
+                                             'Simple random', 'All cases or households',
+                                             'Stratified', 'Other')),
+         location_desc = factor(location_desc,
+                                levels = c('Rural', 'Urban', 'Urban and Rural',
+                                           'Peri-Urban', 'Urban and Peri-Urban', 'IDP or Refugee Camp')),
+         location_type = factor(location_type, 
+                                levels = c('Any care outside home', 'Hospital/Clinic', 'Private Hospital/Clinic', 'Public Hospital/Clinic',
+                                           'Other', 'Pharmacy', 'CHW', 'Health post', 'Traditional Healer', 'Friends/Family')))
+```
+
+#### Overall proportion seeking care by source
+
+```{r, fig.width = 10}
+floc1 <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+# df_locs %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(prop_seek),
+#             N = length(prop_seek),
+#             IQR_L = quantile(prop_seek, 0.25),
+#             IQR_R = quantile(prop_seek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+
+floc1
+```
+
+#### By source and study characteristic {.tabset}
+
+##### Case definition
+
+```{r, fig.width = 10, fig.height = 10}
+floc2a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc2a + facet_wrap('case_cat', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc2b <- plot_seekprop(df_locs, 'case_cat', num_colors=3) +
+  facet_wrap('location_type', ncol = 2)
+
+floc2b
+```
+
+##### Income group
+
+```{r, fig.width = 10, fig.height = 10}
+floc3a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc3a + facet_wrap('income_group', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc3b <- plot_seekprop(df_locs, 'income_group', num_colors=4) +
+  facet_wrap('location_type', ncol = 2)
+
+floc3b
+```
+
+##### Timing of care seeking
+
+```{r, fig.width = 10, fig.height = 10}
+floc4a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc4a + facet_wrap('time_care', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc4b <- plot_seekprop(df_locs, 'time_care', num_colors=4) +
+  facet_wrap('location_type', ncol = 2)
+
+floc4b
+```
+
+##### Self or child
+
+```{r, fig.width = 10, fig.height = 10}
+floc5a <- plot_seekprop(df_locs, 'location_type', 
+                       num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none')
+
+floc5a + facet_wrap('self_or_child', ncol = 1)
+```
+
+```{r, fig.width = 8, fig.height = 11}
+floc5b <- plot_seekprop(df_locs, 'self_or_child', num_colors=3) +
+  facet_wrap('location_type', ncol = 2)
+
+floc5b
+```
+
+<br>
+
+## Summary of key results
+
+##### 1) Found the following trends in care seeking at hospital/clinic in the raw data:
+
+-   Care seeking higher in an outbreak and for severe diarrhea or cholera
+-   Variation in care seeking by LMIC/HIC tricky to separate from case definition
+-   The way the care seeking question is asked influences care seeking, particularly timing of care, recall period, and whether the question is about self or child
+
+##### 2) Found some trends towards higher care seeking at hospital/clinic for younger ages:
+
+-   Very weak (not significant) positive correlation between proportion under 5 and proportion that sought care overall
+-   Studies conducted only among children reported higher care seeking on average than studies conducted only among adults
+-   This trend held for diarrhea and gastroenteritis but not for severe diarrhea or cholera
+
+##### 3) Found high variation between studies, resulting in wide uncertainty around global estimates of proportion seeking care at hospitals/clinics
+
+-   Wide range in study-level estimates and global estimate credible intervals, very high I2
+-   Estimated proportion seeking care varied between 4 modeling approaches (3 different priors for Bayesian GLM, and non-Bayesian RE meta-analysis): 35% to 51%.
+
+##### 4) The only factor that was clearly and consistently associated with variation in care seeking at hospitals/clinics was diarrhea case definition:
+
+-   In univariate analysis, found that case definition, being in an outbreak, and being a caregiver of a patient at a health facility (as oppose to at home) were associated with higher odds of seeking care, while having a longer recall period was associated with lower odds of seeking care.
+-   In bivariate analysis, found that we could not separate the effects of 1) recall period, case definition, and whether the study was about an individual or their child, or 2) recall period, case definition, and whether the study took place during an outbreak.
+-   In sub-analysis, there was no longer an effect of being in an outbreak when sub-setting to just severe diarrhea or cholera, and there was no longer an effect of recall period when sub-setting to just general diarrhea.
+-   In multivariate analysis, found that odds of seeking care for severe diarrhea or cholera were significantly higher than for general diarrhea, OR 3.15 (95% CrI 1.41-6.09), adjusting for timing of care seeking.
+
+##### 5) Found the following trends in care seeking at other sources:
+
+-   Hospitals/clinics are the most common source of care seeking outside the home across all categories examined
+-   Seeking care from traditional healers was reported very rarely across all categories examined
+-   Health posts and community health workers (CWH) are more commonly sought in low-income countries and as a first source of care
+-   Care seeking anywhere outside the home was notably higher for an individual's child than for an individual themselves
+
+<br>
+
+## Additional things to consider
+
+Sensitivity analyses (Skye found no differences):
+
+-   study quality stratifications based on critical appraisals
+
+Additional country- or study-level covariates to explore (Marissa working on):
+
 -   Policies on free or affordable healthcare
 -   Ratio of medical practitioners or CHWs to population
 
-Sub-analyses:
-
--   age
--   sex
--   pre-post intervention
-
-Sensitivity analyses:
-
--   study quality stratifications based on critical appraisals
--   drop non-standard populations (e.g., at a hospital) or other categories
-
-Supplementary analyses:
+Supplementary analyses (potential, in rough order of importance):
 
 -   would you seek care
 -   assumptions about single-choice answers and where else people may seek care
