@@ -890,6 +890,83 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 ```
 
+### Prior predictive checks
+
+```{r run prior predictive checks for model 1}
+
+# which Stan model to run
+stan_model <- 'mod1' 
+stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model, 
+                      '-priorcheck',
+                      ifelse(sa, '-sa', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'prior_pred_checks',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_prior_checks(
+    model_script = here::here('code', 'prior_pred_checks.stan'),
+    dat_surveyed = stan_dat$n_did_survey,
+    dat_covars = stan_dat %>% select_at(covs),
+    re_ids = stan_dat$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "prior_pred_checks", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+```
+
+```{r plot prior checks, fig.width = 8, fig.height = 3}
+# distributions of alpha
+priorcheck1_file <- here::here('data', 'generated_data', 'prior_pred_checks', 'propseek-all-mod1-priorcheck.rds')
+priorcheck1 <- readRDS(priorcheck1_file)
+
+# proportion that sought care
+prop_priorcheck1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns,
+                             draws_file = priorcheck1_file)[[1]]
+
+# prior and posteriors
+pal <- brewer.pal(11, 'PRGn')
+s3aL <- plot_prior_post(priorcheck1$alpha$alpha, 
+                'logit(global intercept)',
+                arg1=0, arg2=2, dprior='dnorm') +
+  ggtitle('Unadjusted') +
+  scale_color_manual(values = c(pal[9], pal[2]), 
+                     name = NULL, labels = c('Prior', 'Prior sampled'))
+
+s3aR <- ggplot() +
+  geom_histogram(aes(prop_priorcheck1$pos))+
+  xlim(c(0,1)) +
+  theme_classic() +
+  ggtitle('Prior predictive distribution') +
+  xlab('Proportion that sought care')
+
+# plot
+cowplot::plot_grid(s3aL, s3aR,
+                   #s3bL, s3bR,
+                   #s3cL, s3cR,
+                   labels = c('A', ''), ncol = 2)
+```
+
+<br>
+
 ### Unadjusted estimates {.tabset}
 
 ```{r run unadjusted Stan models}
@@ -2311,12 +2388,14 @@ ge_forest
 
 <br>
 
-## Where else do people seek care?
+## Where else do people seek care in LMICs?
 
 ### Data
 
 ```{r}
 df_locs <- df %>%
+  # restrict to LMICs
+  filter(hic == 0) %>%
   # aggregate care seeking
   group_by_at(c('entry_id', 'entry_desc', 'region', 'location_type', 'study_type', 'sampling_method', 'pop_cat',
                 'case_cat', 'outbreak_desc', 'location_desc', 'income_group', 'hic',
@@ -2354,7 +2433,7 @@ df_locs <- df %>%
                                            'Peri-Urban', 'Urban and Peri-Urban', 'IDP or Refugee Camp')),
          location_type = factor(location_type, 
                                 levels = c('Any care outside home', 'Hospital/Clinic', 'Private Hospital/Clinic', 'Public Hospital/Clinic',
-                                           'Other', 'Pharmacy', 'CHW', 'Health post', 'Traditional Healer', 'Friends/Family')))
+                                           'Other', 'Pharmacy', 'CHW', 'Health post', 'Friends/Family', 'Traditional Healer')))
 ```
 
 #### Overall proportion seeking care by source
@@ -2409,7 +2488,7 @@ floc3a + facet_wrap('income_group', ncol = 1)
 ```
 
 ```{r, fig.width = 8, fig.height = 11}
-floc3b <- plot_seekprop(df_locs, 'income_group', num_colors=4) +
+floc3b <- plot_seekprop(df_locs, 'income_group', num_colors=3) +
   facet_wrap('location_type', ncol = 2)
 
 floc3b
