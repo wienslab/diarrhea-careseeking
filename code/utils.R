@@ -389,6 +389,163 @@ load_incidence <- function(df){
 
 
 # Run Stan analysis
+run_prior_checks <-  function(model_script,
+                              dat_surveyed,
+                              dat_covars,
+                              re_ids,
+                              test_ids,
+                              run_id,
+                              coef_eqn,
+                              redo,
+                              ...) {
+  
+  # Set analysis data
+  dat_covars <- as_tibble(dat_covars)
+  
+  # Set model matrix
+  X <- model.matrix(as.formula(paste("~", coef_eqn)), data = dat_covars)
+  
+  # Unique study ids from 1 to N
+  u_re_ids <- unique(re_ids)
+  re_ids <- map_dbl(re_ids, ~which(u_re_ids == .))
+  
+  # name of the Stan output file 
+  # just in case results directory isn't created already
+  if(!dir.exists(here::here("data", "generated_data", "prior_pred_checks"))){
+    dir.create(here::here("data", "generated_data", "prior_pred_checks"))
+  }
+  
+  stan_out_file <- here::here("data", "generated_data", "prior_pred_checks", 
+                              paste0("stan_fit_", run_id,".rds"))
+  
+  if (!file.exists(stan_out_file) | redo) {
+    
+    mod <- cmdstanr::cmdstan_model(model_script)
+    
+    # Run Stan model
+    stan_est <- mod$sample(data = list(
+      N_obs = length(u_re_ids), # random effect on each observation
+      N_re = length(u_re_ids), # random effect on each observation
+      re = re_ids,
+      p_vars = ncol(X),
+      X = X,
+      num_survey = dat_surveyed
+    ),
+    chains = 4,
+    parallel_chains = 4,
+    iter_sampling = 1000,
+    iter_warmup = 500,
+    refresh = 50,
+    fixed_param = TRUE
+    )
+    
+    # print summary
+    stan_est$cmdstan_summary()
+    # save model objects
+    stan_est$draws()
+    stan_est$sampler_diagnostics()
+    saveRDS(stan_est, stan_out_file)
+  } else {
+    # load pre-computed posteriors
+    cat("Model not re-run. Loading pre-computed posteriors from ", stan_out_file, "\n")
+    stan_est <- readRDS(stan_out_file)
+  }
+  
+  # extract draws for all parameters
+  draws <- stan_est$draws(format = "df")
+  
+  # covariate table
+  cov_tbl <- draws[grep('beta', names(draws))]
+  names(cov_tbl) <- colnames(X)
+  cov_tbl <- exp(cov_tbl)
+  
+  # pos table
+  p_tbl <- draws[grep('^p\\[', names(draws))]
+  
+  # sought table
+  num_sought_tbl <- draws[grep('^num_sought_pred\\[', names(draws))]
+  
+  # re table
+  e_tbl <- draws[grep('^eta_re\\[', names(draws))]
+  
+  # store results for all parameters
+  res <- list(
+    beta = cov_tbl,
+    model_mtx = X,
+    num_survey = dat_surveyed,
+    p = p_tbl,
+    e = e_tbl,
+    num_sought = num_sought_tbl,
+    sigma_re = draws['sigma_re'],
+    alpha = draws['alpha']
+  )
+  
+  return(res)
+}
+
+
+# plot prior and posterior for sensitivity/specificity draws from the JAGS model
+plot_prior_post <- function(post_draws, 
+                            x_lab,
+                            arg1 = 1,
+                            arg2 = 1,
+                            dprior = 'dbeta') {
+  # purples and greens
+  pal <- brewer.pal(11, 'PRGn')
+  
+  # add plot
+  ggplot() + 
+    stat_function(fun = get(dprior), args = list(arg1, arg2), geom = "area", 
+                  fill = pal[9], alpha = 0.2) + 
+    stat_function(fun = get(dprior), args = list(arg1, arg2), 
+                  aes(color = pal[9])) +
+    geom_density(aes(post_draws, color = pal[2])) + 
+    scale_color_manual(values = c(pal[9], pal[2]), 
+                       name = NULL, labels = c('Prior', 'Posterior')) +
+    theme_classic() +
+    xlim(-6, 6) +
+    xlab(x_lab) + ylab('Density') + 
+    theme(legend.position = c(0.2, 0.9),
+          legend.background=element_blank())
+}
+
+
+# calculate 95% confidence interval for a proportion using binomial probability
+# formula here: https://www.statology.org/binomial-confidence-interval-r/
+binomial_ci <- function(p, n, a = 0.05) {
+  ci <- p + c(-qnorm(1-a/2), qnorm(1-a/2))*sqrt((1/n)*p*(1-p))
+  return(ci)
+}
+
+# calculate variance of a proportion
+prop_var <- function(p, n) {
+  p*(1-p)/n
+}
+
+# create a data frame with the number of observations by study methods
+# for use in post-stratification later
+obs_by_cat <- function(dat, covs) {
+  
+  # get study observations
+  dat <- dat %>%
+    dplyr::select_at(c('study_id', 'country_iso3', covs)) %>%
+    unique()
+  
+  # count number by covariates
+  props <- dat %>%
+    dplyr::count(across(all_of(covs))) %>%
+    mutate(prop = n/nrow(dat)) %>% 
+    replace(is.na(.), 0)
+  
+  # arrange alphabetically to make sure in same order as covs
+  props <- props %>%
+    dplyr::select(c(sort(covs), 'n', 'prop'))
+  
+  return(props)
+}
+
+
+# Run Stan analysis
 run_analysis_stan <- function(model_script,
                               dat_surveyed,
                               dat_soughtcare,
@@ -466,6 +623,12 @@ run_analysis_stan <- function(model_script,
   # pos table
   p_tbl <- draws[grep('^p\\[', names(draws))]
   
+  # pos pred table
+  p_pred_tbl <- draws[grep('^p_pred\\[', names(draws))]
+  
+  # sought table
+  num_sought_tbl <- draws[grep('^num_sought_pred\\[', names(draws))]
+  
   # re table
   e_tbl <- draws[grep('^eta_re\\[', names(draws))]
 
@@ -478,7 +641,9 @@ run_analysis_stan <- function(model_script,
     p = p_tbl,
     e = e_tbl,
     sigma_re = draws['sigma_re'],
-    alpha = draws['alpha']
+    alpha = draws['alpha'],
+    p_pred = p_pred_tbl,
+    num_sought_pred = num_sought_tbl,
   )
   
   return(res)
@@ -551,11 +716,16 @@ obs_by_cat <- function(dat, covs) {
 # assuming that the proportion of all potential studies that use different methods
 # and case definitions match the proportions we found in the systematic review
 # but we do not include the post-stratified results because they are not meaningful
-stratify <- function(mod, case_strat, cov_cats, mod_eqns, sa = '') {
+stratify <- function(mod, case_strat, cov_cats, mod_eqns, sa = '', draws_file = NULL) {
   
   # load model draws
-  draws <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates',
-                              paste0('propseek-', case_strat, '-', mod, sa, '.rds')))
+  if (is.null(draws_file)) {
+    draws <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates',
+                                paste0('propseek-', case_strat, '-', mod, sa, '.rds')))
+  } else {
+    draws <- readRDS(draws_file)
+  }
+  
   
   # extract parameters
   beta <- cbind(draws[grep('alpha', names(draws))],
