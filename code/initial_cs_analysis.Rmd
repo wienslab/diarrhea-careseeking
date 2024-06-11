@@ -164,7 +164,7 @@ Number of stratified observation entries in the primary dataset at each administ
 ```{r figS1, fig.height = 10, fig.width = 7, warning = FALSE}
 data_loc <- df %>% 
   # select relevant study-period columns
-  dplyr::select(c('study_id', 'entry_id', 'country_iso3',
+  dplyr::select(c('study_id', 'entry_id', 'country_iso3', 'region',
                   'admin0', 'admin1', 'admin2', 'admin3', 'place_name')) %>%
   unique() %>%
   # only keep location names for lowest admin level
@@ -173,14 +173,14 @@ data_loc <- df %>%
          admin2 = ifelse(admin3 == '', admin2, '')) %>%
   # reshape for counting
   reshape2::melt(measure.vars = c('admin0', 'admin1', 'admin2', 'admin3'),
-                 id.vars = c('study_id', 'entry_id', 'country_iso3')) %>%
+                 id.vars = c('study_id', 'entry_id', 'country_iso3', 'region')) %>%
   # largest administrative level by observation
   filter(value != '') %>%
-  group_by_at(c('study_id', 'entry_id', 'country_iso3')) %>%
+  group_by_at(c('study_id', 'entry_id', 'country_iso3', 'region')) %>%
   summarize(largest_admin = min(as.character(variable))) %>%
   ungroup() %>%
   # count observations by admin level
-  count(country_iso3, largest_admin) %>% 
+  count(country_iso3, region, largest_admin) %>% 
   rename(variable = largest_admin, observations = n) %>%
   ungroup()
 
@@ -195,13 +195,22 @@ cowplot::plot_grid(figS1[[1]], figS1[[2]], figS1[[3]], figS1[[4]],
                    ncol = 1)
 
 
-# # number at each level
-# data_loc %>%
-#   group_by(variable) %>%
-#   # count observations by admin level
-#   summarize(observations = sum(observations)) %>%
-#   ungroup() %>%
-#   pretty_table()
+# number at each level
+data_loc %>%
+  group_by(variable) %>%
+  # count observations by admin level
+  summarize(observations = sum(observations)) %>%
+  ungroup() %>%
+  pretty_table()
+
+# number in each region
+data_loc %>%
+  group_by(region) %>%
+  # count observations by admin level
+  summarize(observations = sum(observations)) %>%
+  ungroup() %>%
+  arrange(observations) %>%
+  pretty_table()
 
 # # numbers for Haiti
 # data_loc %>%
@@ -256,13 +265,13 @@ cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
                    labels = c('A', 'B', 'C', 'D'),
                    ncol = 1)
 
-# # number at each level
-# coverage_time %>%
-#   group_by(variable) %>%
-#   # count observations by time period
-#   summarize(observations = sum(observations)) %>%
-#   ungroup() %>%
-#   pretty_table()
+# number at each level
+coverage_time %>%
+  group_by(variable) %>%
+  # count observations by time period
+  summarize(observations = sum(observations)) %>%
+  ungroup() %>%
+  pretty_table()
 
 # # numbers for Haiti
 # coverage_time %>%
@@ -285,10 +294,23 @@ sd <- df %>%
   # format variables
   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
   # sum up number of tests and sample sizes by observation
-  dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 
+  dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat',
                   'income_group', 'outbreak_desc', 'location_desc')) %>%
   unique() %>%
   dplyr::select(-entry_id) 
+
+
+# tmp <- df %>% 
+#   # format variables
+#   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
+#   # sum up number of tests and sample sizes by observation
+#   dplyr::select(c('entry_id', 'study_type', 'sampling_method', 'pop_cat', 'case_cat', 'recall_time',
+#                   'income_group', 'outbreak_desc', 'location_desc')) %>%
+#   unique() %>%
+#   dplyr::select(-entry_id) %>%
+#   filter(recall_time > 30)
+# 
+# table(tmp$case_cat)
 
 # summarize and make table
 sd %>%
@@ -765,8 +787,9 @@ ggplot(df_cor, aes(y=prop_seek, x = prop_five)) +
 f2age <- plot_seekprop(df_age %>% filter(prop_five == 0 | prop_five == 1), 'prop_five', num_colors=2) +
   ggtitle('Children (1) or adults (0)')
 
-# df_hosp %>% filter(hic==0) %>%
-#   group_by(region) %>%
+# df_age %>% filter(hic==0) %>%
+#   filter(prop_five == 0 | prop_five == 1) %>%
+#   group_by(prop_five) %>%
 #   summarize(median = median(prop_seek),
 #             N = length(prop_seek),
 #             IQR_L = quantile(prop_seek, 0.25),
