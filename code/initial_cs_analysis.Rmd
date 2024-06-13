@@ -668,8 +668,6 @@ cowplot::plot_grid(f3c, f3d,
 ### Care seeking at hospital/clinic by age
 
 ```{r}
-#TODO: consider pulling non-primary dataset here; would need to double check that age-stratified entries flagged in this column no not overlap
-
 # set variables to keep
 vars <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
           'case_cat', 'outbreak_desc', 'location_desc', 'prop_five', 'strat_age')
@@ -2292,9 +2290,6 @@ pretty_table(tabs)
 <br>
 
 ```{r fig5, fig.height = 4, fig.width = 8}
-#TODO: there is something weird with the gastroenteritis stratification; need to make sure there's not a bug in the code because it should have lower not higher care seeking
-# - The if you take the weighted mean across the data, the trends are in this direction; unweighted, they are not. Not sure why this would cause the problem though as we don't take the mean in the post-strat mean calculation
-
 # set colors
 pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 
