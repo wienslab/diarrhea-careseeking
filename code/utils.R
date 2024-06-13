@@ -433,8 +433,8 @@ run_prior_checks <-  function(model_script,
     ),
     chains = 4,
     parallel_chains = 4,
-    iter_sampling = 1000,
-    iter_warmup = 500,
+    iter_sampling = 2000,
+    iter_warmup = 1000,
     refresh = 50,
     fixed_param = TRUE
     )
@@ -531,12 +531,12 @@ run_analysis_stan <- function(model_script,
     ),
     chains = 4,
     parallel_chains = 4,
-    iter_sampling = 1000,
-    iter_warmup = 500,
+    iter_sampling = 2000,
+    iter_warmup = 1000,
     step_size = 0.01,
     adapt_delta = 0.99,
     max_treedepth = 15,
-    refresh = 50
+    refresh = 250
     )
     
     # print summary
@@ -582,7 +582,7 @@ run_analysis_stan <- function(model_script,
     sigma_re = draws['sigma_re'],
     alpha = draws['alpha'],
     p_pred = p_pred_tbl,
-    num_sought_pred = num_sought_tbl,
+    num_sought_pred = num_sought_tbl
   )
   
   return(res)

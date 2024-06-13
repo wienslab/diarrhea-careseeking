@@ -835,7 +835,7 @@ We'll build generalized linear models with a study-level random intercept follow
 
 3.  Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
 
-*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 171 unique observations corresponding to 136 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
+*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 146 unique observations corresponding to 114 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep for Stan}
 # use all cores but 2
@@ -843,7 +843,7 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
@@ -855,8 +855,8 @@ if (!sa) {
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
   'mod1' = '1',
-  'mod2' = 'time_care + case_cat',
-  'mod3' = 'time_care'
+  'mod2' = 'pop_cat + case_cat',
+  'mod3' = 'pop_cat'
 )
 ```
 
@@ -911,11 +911,33 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
   unique() %>% 
   arrange(Variable, Category) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
+
+# sr_dat %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+# 
+# sr_dat %>%
+#   summarize(`Weighted mean` = weighted.mean(propseek, n_did_survey),
+#             `Standard deviation` = sd(propseek)) %>%
+#   ungroup %>%
+#   pretty_table()
 ```
 
 ### Prior predictive checks
 
+For the primary analysis, we chose priors that matched the distribution of the data. Specifically, we used a Normal(-0.6,1.5) prior on alpha, where the mean of the distribution (-0.67) matches the median of the observation data (0.339) in logit space. The resulting prior predictive distribution has a median of 0.34 and a mean of 0.37.
+
+In sensitivity analyses, we shift the mean of the prior distribution on alpha up or right 20% in probability space (i.e., mean of -0.38 for the normal distribution in logit space, median of 0.41 for the observation data) and down or left 20% (i.e., mean of -0.99 for the normal distribution in logit space, median of 0.27 for the observation data).
+
 ```{r run prior predictive checks for model 1}
+
+# logit(median(sr_dat$propseek))
+# logit(median(sr_dat$propseek) + 0.25*median(sr_dat$propseek))
+# logit(median(sr_dat$propseek) - 0.25*median(sr_dat$propseek))
 
 # which Stan model to run
 stan_model <- 'mod1' 
@@ -956,7 +978,7 @@ if (!file.exists(out_est_file) | stan_redo) {
 }
 ```
 
-```{r plot prior checks, fig.width = 8, fig.height = 3}
+```{r plot prior checks, fig.width = 4, fig.height = 9}
 # distributions of alpha
 priorcheck1_file <- here::here('data', 'generated_data', 'prior_pred_checks', 'propseek-all-mod1-priorcheck.rds')
 priorcheck1 <- readRDS(priorcheck1_file)
@@ -969,23 +991,29 @@ prop_priorcheck1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 
 pal <- brewer.pal(11, 'PRGn')
 s3aL <- plot_prior_post(priorcheck1$alpha$alpha, 
                 'logit(global intercept)',
-                arg1=0, arg2=2, dprior='dnorm') +
+                arg1=-0.8, arg2=1.5, dprior='dnorm') +
   ggtitle('Unadjusted') +
   scale_color_manual(values = c(pal[9], pal[2]), 
                      name = NULL, labels = c('Prior', 'Prior sampled'))
 
-s3aR <- ggplot() +
+s3aM <- ggplot() +
   geom_histogram(aes(prop_priorcheck1$pos))+
   xlim(c(0,1)) +
   theme_classic() +
   ggtitle('Prior predictive distribution') +
   xlab('Proportion that sought care')
 
+# distribution of the data
+s3aR <- ggplot() +
+  geom_histogram(aes(sr_dat$propseek))+
+  xlim(c(0,1)) +
+  theme_classic() +
+  ggtitle('Observation data') +
+  xlab('Proportion that sought care')
+
 # plot
-cowplot::plot_grid(s3aL, s3aR,
-                   #s3bL, s3bR,
-                   #s3cL, s3cR,
-                   labels = c('A', ''), ncol = 2)
+cowplot::plot_grid(s3aL, s3aM, s3aR,
+                   labels = c('A', 'B', 'C'), nrow = 3)
 ```
 
 <br>
@@ -1079,7 +1107,6 @@ for (i in 1:length(covs)) {
     seekrate <- readRDS(out_est_file)
   }
 }
-
 ```
 
 ```{r test for confounding with self_or_child}
@@ -1088,7 +1115,7 @@ for (i in 1:length(covs)) {
 stan_dat_ac <- stan_dat %>% filter(self_or_child != 'Other')
 
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice')) {
+for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice', 'pop_cat')) {
   
   stan_model <- paste0('self_or_child-', cov)
   stan_coef_eqn <- cov
@@ -1134,7 +1161,7 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_cho
 ```{r test for confounding with outbreak_desc}
 
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
+for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
   
   stan_model <- paste0('outbreak_desc-', cov)
   stan_coef_eqn <- cov
@@ -1184,7 +1211,7 @@ stan_dat_vc <- stan_dat %>% filter(case_cat != 'Gastroenteritis or non-Vc etiolo
 stan_dat_ge <- stan_dat %>% filter(case_cat != 'Severe diarrhea or cholera')
 
 # loop over covariates for Severe diarrhea or cholera  -------------------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
   
   stan_model <- paste0('vc_severe-', cov)
   stan_coef_eqn <- cov
@@ -1227,7 +1254,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mul
 }
 
 # loop over covariates for Gastroenteritis or non-Vc etiologies -----------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
   
   stan_model <- paste0('ge_nonvc-', cov)
   stan_coef_eqn <- cov
@@ -1400,18 +1427,18 @@ for (prior in c('L', 'R')) {
   }
   
   # model 2 --------------------------------------------------------------------
-  stan_model <- 'mod2' 
+  stan_model <- 'mod2'
   stan_coef_eqn <- stan_mod_eqns[[stan_model]]
-  
+
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
                         '-sa', prior,
                         ifelse(test, '-test', ''))
-  
+
   # file to save to
   out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
                              paste0('propseek-', stan_run_id, '.rds'))
-  
+
   if (!file.exists(out_est_file) | stan_redo) {
     seekrate <- run_analysis_stan(
       model_script = model_script,
@@ -1423,34 +1450,34 @@ for (prior in c('L', 'R')) {
       coef_eqn = stan_coef_eqn,
       redo = stan_redo
     )
-  
+
     saveRDS(seekrate, out_est_file)
-    
+
     # check model convergence and other diagnostics
-    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+    stan_out_file <- here::here("data", "generated_data", "model_fits",
                                 paste0("stan_fit_", stan_run_id,".rds"))
     stan_est <- readRDS(stan_out_file)
     stan_est$cmdstan_diagnose()
     #shinystan::launch_shinystan(stan_est)
-  
+
   } else {
     seekrate <- readRDS(out_est_file)
   }
-  
-  
+
+
   # model 3 --------------------------------------------------------------------
-  stan_model <- 'mod3' 
+  stan_model <- 'mod3'
   stan_coef_eqn <- stan_mod_eqns[[stan_model]]
-  
+
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
                         '-sa', prior,
                         ifelse(test, '-test', ''))
-  
+
   # file to save to
   out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
                              paste0('propseek-', stan_run_id, '.rds'))
-  
+
   if (!file.exists(out_est_file) | stan_redo) {
     seekrate <- run_analysis_stan(
       model_script = model_script,
@@ -1462,20 +1489,20 @@ for (prior in c('L', 'R')) {
       coef_eqn = stan_coef_eqn,
       redo = stan_redo
     )
-  
+
     saveRDS(seekrate, out_est_file)
-    
+
     # check model convergence and other diagnostics
-    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+    stan_out_file <- here::here("data", "generated_data", "model_fits",
                                 paste0("stan_fit_", stan_run_id,".rds"))
     stan_est <- readRDS(stan_out_file)
     stan_est$cmdstan_diagnose()
     #shinystan::launch_shinystan(stan_est)
-  
+
   } else {
     seekrate <- readRDS(out_est_file)
   }
-  
+
 }
 
 
@@ -1692,18 +1719,18 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 ```{r data by covariate strata}
 strata1_dat <- stan_dat %>%
-  group_by(time_care, case_cat) %>%
+  group_by(pop_cat, case_cat) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(time_care, case_cat)
+  arrange(pop_cat, case_cat)
 
 strata2_dat <- stan_dat %>%
-  group_by(time_care) %>%
+  group_by(pop_cat) %>%
   summarize(weighted_mean = round(weighted.mean(n_did/n_did_survey, n_did_survey, na.rm=TRUE)*100,1),
             median = round(median(n_did/n_did_survey)*100,1)) %>%
   ungroup() %>%
-  arrange(time_care)
+  arrange(pop_cat)
 ```
 
 ```{r combine model results}
@@ -1760,8 +1787,8 @@ for (i in file_names) {
 #       which is why we pull these, but in the paper we only present stratified results 
 #       because they are more meaningful
 
-cats_mod2 <- obs_by_cat(stan_dat, c('time_care', 'case_cat'))
-cats_mod3 <- obs_by_cat(stan_dat, c('time_care'))
+cats_mod2 <- obs_by_cat(stan_dat, c('pop_cat', 'case_cat'))
+cats_mod3 <- obs_by_cat(stan_dat, c('pop_cat'))
 
 # get overall care seeking proportion for unadjusted model, integrating over random effects
 prop_mod1 <- stratify('mod1', 'all', data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
@@ -1790,12 +1817,12 @@ mod_ests <- rbind(mod_ests,
                   )
 
 # stratifications below each correspond to:
-#     time_care == 'Any care'
+#     pop_cat == 'Caregiver'
 prop_mod2_sub <- prop_strat_mod2 %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 prop_mod3_sub <- prop_strat_mod3 %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 # save estimates for each case definition category
 prop_mod2_sub <- prop_mod2_sub %>%
@@ -1939,20 +1966,20 @@ propseek1 <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimate
 propseek1_saL <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1-saL.rds'))
 propseek1_saR <- readRDS(here::here('data', 'generated_data', 'care_seeking_estimates', 'propseek-all-mod1-saR.rds'))
 
-# prior and posterios
+# prior and posteriors
 s4aL <- plot_prior_post(propseek1$alpha$alpha, 
                 'logit(global intercept)',
-                arg1=0, arg2=2, dprior='dnorm') +
+                arg1=-0.85, arg2=1.5, dprior='dnorm') +
   ggtitle('Unadjusted')
 
 s4bL <- plot_prior_post(propseek1_saL$alpha$alpha, 
                 'logit(global intercept)',
-                arg1=-0.9, arg2=2, dprior='dnorm') +
+                arg1=-1, arg2=1.5, dprior='dnorm') +
   ggtitle('Unadjusted - shift prior left')
 
 s4cL <- plot_prior_post(propseek1_saR$alpha$alpha, 
                 'logit(global intercept)',
-                arg1=0.9, arg2=2, dprior='dnorm') +
+                arg1=-0.4, arg2=1.5, dprior='dnorm') +
   ggtitle('Unadjusted - shift prior right')
 
 
@@ -2114,7 +2141,7 @@ pretty_table(mod_ests_uni)
 
 In analyses below, the dependent variable is listed in the header.
 
-#### self_or_child (adult vs child)
+#### self_or_child (self/adult vs child)
 
 ```{r self_or_child confounding}
 mod_ests_soc <- mod_ests %>%
@@ -2201,7 +2228,7 @@ In the above analyses, found that we cannot separate effects of:
 1.  time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
 2.  recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
 
-The trends with self_or_chid were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
+The trends with self_or_child were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
 
 We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
 
@@ -2224,10 +2251,10 @@ c3 <- mod_ests %>%
 
 # make tables
 or_table(c3) %>%
-  pretty_table(title = 'Model including timing of care seeking')
+  pretty_table(title = 'Model including study population')
 
 or_table(c2) %>%
-  pretty_table(title = 'Model including timing of care seeking question and case definition')
+  pretty_table(title = 'Model including study population and case definition')
 ```
 
 <br>
@@ -2274,8 +2301,8 @@ pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
 # update data frame for plotting
 cs_plot <- cs[1:5,] %>% 
   mutate(facet = c('Unadjusted', 
-                   rep('Stratum: Any care seeking; testing case definition', 3),
-                   rep('Stratum: Any care seeking', 1))) 
+                   rep('Stratum: Caregiver; testing case definition', 3),
+                   rep('Stratum: Caregiver', 1))) 
 
 cs_plot <- cs_plot %>%
   mutate(facet = factor(facet, levels = c(unique(cs_plot$facet)[1],

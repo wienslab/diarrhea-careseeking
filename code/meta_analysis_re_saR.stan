@@ -42,5 +42,5 @@ model {
   target += normal_lpdf(beta | 0, 2);
   target += normal_lpdf(eta_re | 0, 1);
   target += normal_lpdf(sigma_re | 0, 1);
-  target += normal_lpdf(alpha | 0.9, 2); // shift right
+  target += normal_lpdf(alpha | -0.38, 1.5); // shift right
 }

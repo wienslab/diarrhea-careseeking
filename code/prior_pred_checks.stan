@@ -26,7 +26,7 @@ generated quantities {
   array[N_obs] int num_sought_pred; // predicted number of individuals that sought care
   
   // Sample from priors
-  alpha = normal_rng(0, 2);
+  alpha = normal_rng(-0.67, 1.5);
   for (i in 1:p_vars) beta[i] = normal_rng(0, 2);
 
   // Truncated normal for sigma_re
