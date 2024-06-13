@@ -841,7 +841,7 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 sa <- FALSE # whether or not to run sensitivity analysis
 test <- FALSE # add a 'test' flag to run_id 
 
@@ -1865,10 +1865,10 @@ mod_ests <- rbind(mod_ests,
 # stratifications below each correspond to:
 #     time_care == 'Any care'
 prop_mod2_sub_saL <- prop_strat_mod2_saL %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 prop_mod3_sub_saL <- prop_strat_mod3_saL %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 # save estimates for each case definition category
 prop_mod2_sub_saL <- prop_mod2_sub_saL %>%
@@ -1913,10 +1913,10 @@ mod_ests <- rbind(mod_ests,
 # stratifications below each correspond to:
 #     time_care == 'Any care'
 prop_mod2_sub_saR <- prop_strat_mod2_saR %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 prop_mod3_sub_saR <- prop_strat_mod3_saR %>%
-  filter(`time_careFirst source` == 0 & `time_carePrior to current visit` == 0)
+  filter(`pop_catCaregiver of patient at health facility` == 0 & `pop_catHead of household` == 0 & `pop_catOther resident` == 0)
 
 # save estimates for each case definition category
 prop_mod2_sub_saR <- prop_mod2_sub_saR %>%
