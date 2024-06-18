@@ -108,7 +108,7 @@ forest_plot <- function(plot_dt) {
 
 # proportion positive by grouping variable of interest
 plot_seekprop <- function(indat, x_col, 
-                          y_col = 'prop_seek',
+                          y_col = 'propseek',
                           rotate_x_labs = FALSE,
                           color_col = x_col,
                           palette = 'Dark2',
