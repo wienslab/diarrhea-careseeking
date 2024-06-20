@@ -87,7 +87,14 @@ df <- df %>%
   # create standard population category
   mutate(pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student', 'Other',
-                                         'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat)) 
+                                         'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat)) %>%
+  # clean up study quality assessments
+  mutate(int_consistent = ifelse(int_consistent == "N/a" | int_consistent == "n/a", 
+                                 NA, int_consistent),
+         ic_combined = ifelse(is.na(int_consistent), 
+                              int_consistent_other, 
+                              int_consistent),
+         quality_score = as.numeric(ic_combined) + as.numeric(sample_justified) + as.numeric(nonresponse))
   
 # main dataset is whether people DID seek care; also create df for when people WOULD seek care
 df_would <- df %>%
@@ -112,7 +119,8 @@ sr_dat <- df %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
-  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+                'ic_combined', 'sample_justified', 'nonresponse', 'quality_score', covs)) %>%
   summarize(n_did_survey = n_did_survey,
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
@@ -124,7 +132,8 @@ sr_dat <- df %>%
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
                                        'Urban and non-urban'))) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
-  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+                'ic_combined', 'sample_justified', 'nonresponse', 'quality_score', covs)) %>%
   summarize(n_did_survey = sum(n_did_survey), 
             n_did = sum(n_did)) %>%
   ungroup() %>%
@@ -167,6 +176,8 @@ sr_dat_would <- df_would %>%
 # proportion seeking care for examining non-hospital sources of care
 # aggregate across stratifications that we're not including as covariates or stratifications
 sr_dat_sources <- df %>%
+  # restrict to LMICs
+  filter(hic == 0) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
   group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
   summarize(n_did_survey = n_did_survey,
@@ -179,7 +190,10 @@ sr_dat_sources <- df %>%
             n_did = sum(n_did)) %>%
   ungroup() %>%
   unique() %>%
-  mutate(propseek = n_did/n_did_survey)
+  mutate(propseek = n_did/n_did_survey,
+         location_type = factor(location_type, 
+                                levels = c('Any care outside home', 'Hospital/Clinic', 'Public Hospital/Clinic', 'Private Hospital/Clinic',
+                                           'Other', 'Pharmacy', 'Health post', 'CHW', 'Traditional Healer', 'Friends/Family')))
 ```
 
 ## Study characteristics
@@ -543,17 +557,45 @@ f2d <- plot_seekprop(df_hosp_lmic, 'self_or_child', num_colors=3) +
 #   pretty_table()
 ```
 
-```{r fig2-2, fig.width = 9, fig.height = 7}
+```{r, fig.width = 9, fig.height = 7}
 cowplot::plot_grid(f2a, f2b, f2c, f2d,
                    labels = c('A', 'B', 'C', 'D'),
                    nrow = 2, rel_widths = c(0.85, 1))
-
-#TODO: add in study quality
 ```
 
 <br>
 
-### Care seeking at hospital/clinic by age
+#### Figure S5. Proportion seeking care by study quality
+
+Overall quality score is whether data is internally consistent + whether sample size was justified + whether the non-response was reported.
+
+```{r, fig.width = 8, fig.height = 7, message = TRUE}
+s5a <- plot_seekprop(df_hosp_lmic, 'quality_score', num_colors=4) +
+  ggtitle('Overall quality score')
+
+s5b <- plot_seekprop(df_hosp_lmic %>% mutate(ic_combined = ifelse(ic_combined == 1, 'Yes', 'No')), 
+              'ic_combined', num_colors=2) +
+  ggtitle('Data internally consistent')
+
+s5c <- plot_seekprop(df_hosp_lmic %>% mutate(sample_justified = ifelse(sample_justified == 1, 'Yes', 'No')), 
+              'sample_justified', num_colors=2) +
+  ggtitle('Sample size justified')
+
+s5d <- plot_seekprop(df_hosp_lmic %>% mutate(nonresponse = ifelse(nonresponse == 1, 'Yes', 'No')), 
+              'nonresponse', num_colors=2) +
+  ggtitle('Non-response rate reported')
+
+cowplot::plot_grid(s5a, s5b, s5c, s5d,
+                   labels = c('A', 'B', 'C', 'D'),
+                   nrow = 2)
+
+# cor.test(df_hosp_lmic$propseek, df_hosp_lmic$quality_score, method = 'spearman')
+# spearman.ci(df_hosp_lmic$propseek, df_hosp_lmic$quality_score)
+```
+
+<br>
+
+#### Figure 3. Relationship between care seeking and proportion under 5 years
 
 ```{r}
 # set variables to keep
@@ -583,8 +625,6 @@ df_age <- df %>%
   # proportion seeking care
   mutate(propseek = n_did/n_did_survey)
 ```
-
-#### Figure 3. Relationship between care seeking and proportion under 5 years
 
 ```{r}
 df_cor <- df_age %>%
@@ -620,11 +660,15 @@ f3b <- ggplot(df_cor, aes(y=propseek, x = prop_five)) +
 ```
 
 ```{r}
+# overall
 f3c <- plot_seekprop(df_age %>% 
                        filter(prop_five == 0 | prop_five == 1) %>%
                        mutate(prop_five = ifelse(prop_five == 1, 'Under 5', 'Over 5')), 
                      'prop_five', num_colors=2) +
   ggtitle(NULL)
+
+# by case definition
+f3d <- f3c + facet_wrap('case_cat')
 
 # df_age %>%
 #   filter(prop_five == 0 | prop_five == 1) %>%
@@ -637,11 +681,7 @@ f3c <- plot_seekprop(df_age %>%
 #   pretty_table()
 ```
 
-```{r}
-f3d <- f3c + facet_wrap('case_cat')
-```
-
-```{r fig2-2, fig.width = 9, fig.height = 7}
+```{r, fig.width = 9, fig.height = 7}
 cowplot::plot_grid(f3a, f3b, f3c, f3d,
                    labels = c('A', 'B', 'C', 'D'),
                    nrow = 2, rel_widths = c(0.5, 1))
@@ -649,15 +689,23 @@ cowplot::plot_grid(f3a, f3b, f3c, f3d,
 
 <br>
 
-## Where else do people seek care in LMICs?
+#### Figure 4. Proportion seeking care by source in LMICs
 
-#### Overall proportion seeking care by source
+```{r}
 
-```{r, fig.width = 10}
-floc1 <- plot_seekprop(sr_dat_sources, 'location_type', 
-                       num_colors=10, palette = 'Spectral') +
+# overall proportion seeking care
+f4a <- plot_seekprop(sr_dat_sources, 'location_type',
+                     num_colors=10, palette = 'Spectral') +
   theme_dark() +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none') +
+  ggtitle('Overall (any care, first source, prior to current visit, or within 24 hours)')
+
+# first source of care
+f4b <- plot_seekprop(sr_dat_sources %>% filter(time_care == 'First source'), 
+                     'location_type', num_colors=10, palette = 'Spectral') +
+  theme_dark() +
+  theme(legend.position = 'none') +
+  ggtitle('First source of care')
 
 # sr_dat_sources %>%
 #   group_by(location_type) %>%
@@ -666,83 +714,52 @@ floc1 <- plot_seekprop(sr_dat_sources, 'location_type',
 #             IQR_L = quantile(propseek, 0.25),
 #             IQR_R = quantile(propseek, 0.75)) %>%
 #   ungroup %>%
+#   arrange(-median) %>%
 #   pretty_table()
-
-floc1
 ```
 
-#### By source and study characteristic {.tabset}
+```{r, fig.width = 9, fig.height = 7}
+cowplot::plot_grid(f4a, f4b,
+                   labels = c('A', 'B'),
+                   nrow = 2)
+```
 
-##### Case definition
+#### Proportion seeking care by source and study characteristic {.tabset}
 
-```{r, fig.width = 10, fig.height = 10}
-floc2a <- plot_seekprop(sr_dat_sources, 'location_type', 
-                       num_colors=10, palette = 'Spectral') +
+##### Figure S6. Income group
+
+```{r, fig.width = 10, fig.height = 9}
+fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
+                     num_colors=10, palette = 'Spectral') +
   theme_dark() +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none') +
+  ggtitle(NULL)
 
-floc2a + facet_wrap('case_cat', ncol = 1)
+fS6 + facet_wrap('income_group', ncol = 1)
 ```
 
-```{r, fig.width = 8, fig.height = 11}
-floc2b <- plot_seekprop(sr_dat_sources, 'case_cat', num_colors=3) +
-  facet_wrap('location_type', ncol = 2)
+##### Figure S7. Case definition
 
-floc2b
-```
-
-##### Income group
-
-```{r, fig.width = 10, fig.height = 10}
-floc3a <- plot_seekprop(sr_dat_sources, 'location_type', 
-                       num_colors=10, palette = 'Spectral') +
+```{r, fig.width = 10, fig.height = 9}
+fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
+                     num_colors=10, palette = 'Spectral') +
   theme_dark() +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none') +
+  ggtitle(NULL)
 
-floc3a + facet_wrap('income_group', ncol = 1)
+fS7 + facet_wrap('case_cat', ncol = 1)
 ```
 
-```{r, fig.width = 8, fig.height = 11}
-floc3b <- plot_seekprop(sr_dat_sources, 'income_group', num_colors=3) +
-  facet_wrap('location_type', ncol = 2)
+##### Figure S8. Self or child
 
-floc3b
-```
-
-##### Timing of care seeking
-
-```{r, fig.width = 10, fig.height = 10}
-floc4a <- plot_seekprop(sr_dat_sources, 'location_type', 
-                       num_colors=10, palette = 'Spectral') +
+```{r, fig.width = 10, fig.height = 9}
+fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
+                     num_colors=10, palette = 'Spectral') +
   theme_dark() +
-  theme(legend.position = 'none')
+  theme(legend.position = 'none') +
+  ggtitle(NULL)
 
-floc4a + facet_wrap('time_care', ncol = 1)
-```
-
-```{r, fig.width = 8, fig.height = 11}
-floc4b <- plot_seekprop(sr_dat_sources, 'time_care', num_colors=4) +
-  facet_wrap('location_type', ncol = 2)
-
-floc4b
-```
-
-##### Self or child
-
-```{r, fig.width = 10, fig.height = 10}
-floc5a <- plot_seekprop(sr_dat_sources, 'location_type', 
-                       num_colors=10, palette = 'Spectral') +
-  theme_dark() +
-  theme(legend.position = 'none')
-
-floc5a + facet_wrap('self_or_child', ncol = 1)
-```
-
-```{r, fig.width = 8, fig.height = 11}
-floc5b <- plot_seekprop(sr_dat_sources, 'self_or_child', num_colors=3) +
-  facet_wrap('location_type', ncol = 2)
-
-floc5b
+fS8 + facet_wrap('self_or_child', ncol = 1)
 ```
 
 <br>
