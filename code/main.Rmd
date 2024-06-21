@@ -28,6 +28,9 @@ source(here::here('code', 'utils.R'))
 
 ```{r load and tidy data}
 
+#TODO: go through and make sure the "observations" are all accurate, numbers match in tables, etc.
+#      then go through and update al model results, and numbers in the manuscript
+
 # load systematic review data
 df <- read.csv(here::here('data', 'extracted_data', 'data_extractions.csv'))
 vars <- read.csv(here::here('data', 'extracted_data', 'data_codebook.csv'))
@@ -261,13 +264,13 @@ cowplot::plot_grid(figS1[[1]], figS1[[2]], figS1[[3]], figS1[[4]],
                    ncol = 1)
 
 
-# number at each level
-data_loc %>%
-  group_by(variable) %>%
-  # count observations by admin level
-  summarize(observations = sum(observations)) %>%
-  ungroup() %>%
-  pretty_table()
+# # number at each level
+# data_loc %>%
+#   group_by(variable) %>%
+#   # count observations by admin level
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
 
 # # number in each region
 # data_loc %>%
@@ -409,9 +412,6 @@ schar %>%
 *For multiple choice questions where there is more than one category of hospital/clinic, we take the largest proportion that sought care across them.*
 
 ```{r}
-
-#TODO: why is this 147 rows now, while it was 146 before
-
 # all studies
 df_hosp <- sr_dat %>%
   # format variables
@@ -2279,7 +2279,7 @@ ge_forest
 
 Odds of actually seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
 
-```{r univariate odds ratios}
+```{r univariate odds ratios did}
 mod_ests_uni <- mod_ests %>%
     filter(grepl('all-uni', run_id) & stan_id != 'alpha') 
 
@@ -2296,7 +2296,7 @@ pretty_table(mod_ests_uni_did)
 
 Odds of hypothetically seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
 
-```{r univariate odds ratios}
+```{r univariate odds ratios would}
 mod_ests_uni_would <- mod_ests_uni %>%
     filter(grepl('would', run_id)) %>%
   or_table()
@@ -2444,7 +2444,7 @@ pretty_table(dia_coef)
 
 Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
 
-```{r coefs}
+```{r coefs did}
 # pull mean coefficients
 c2 <- mod_ests %>%
   filter(run_id %in% c('all-mod2'), stan_id != 'alpha')
@@ -2466,7 +2466,7 @@ or_table(c2) %>%
 
 Odds that an individual hypothetically seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
 
-```{r coefs}
+```{r coefs would}
 # pull mean coefficients
 c2 <- mod_ests %>%
   filter(run_id %in% c('all-mod2-would'), stan_id != 'alpha')
