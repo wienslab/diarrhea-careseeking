@@ -1,6 +1,6 @@
 ---
 title: "Care seeking for diarrheal illnes: a systematic review and meta-analysis"
-author: "Kirsten E. Wiens, Marissa Miller, Daniel P. Costello, Ashlynn Solomon, ..., Elizabeth C. Lee, Andrew S. Azman"
+author: "Kirsten E. Wiens, Marissa Miller, Daniel P. Costello, Ashlynn Solomon, Skye Hilbert, ..., Elizabeth C. Lee, Andrew S. Azman"
 output: 
   html_document:
     toc: true
@@ -147,6 +147,8 @@ sr_dat <- df %>%
 # proportion seeking care for meta-analysis secondary dataset
 # aggregate across stratifications that we're not including as covariates or stratifications
 sr_dat_would <- df_would %>%
+  # restrict to LMICs
+  filter(hic == 0) %>%
   # filter to hospital/clinic (not private) and diarrhea (general)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
@@ -160,7 +162,8 @@ sr_dat_would <- df_would %>%
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
-                                       'Urban and non-urban'))) %>%
+                                       'Urban and non-urban')),
+         pop_cat = ifelse(pop_cat %in% c('Internally Displaced Person', 'Patient at health facility'), 'Other resident', pop_cat)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
   summarize(n_would_survey = sum(n_would_survey), 
@@ -399,7 +402,7 @@ schar %>%
 
 <br>
 
-### Care seeking in the unadjusted data
+## Care seeking trends in the unadjusted data
 
 **Note:** "Hospitals or clinics" excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific).
 
@@ -423,7 +426,7 @@ df_hosp_lmic <- df_hosp %>%
 
 <br>
 
-#### Figure S3. Proportion seeking care at a hospital or clinic by region
+### Figure S3. Proportion seeking care at a hospital or clinic by region
 
 ```{r}
 fS3a <- plot_seekprop(df_hosp, 'region', num_colors=10) +
@@ -461,7 +464,7 @@ cowplot::plot_grid(fS3a, fS3b, labels = c('A', 'B'),
 
 <br>
 
-#### Figure S4. Proportion seeking care at a hospital or clinic by income group
+### Figure S4. Proportion seeking care at a hospital or clinic by income group
 
 ```{r}
 fS4a <- plot_seekprop(df_hosp, 'income_group', num_colors=4) +
@@ -499,7 +502,7 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 
 <br>
 
-#### Figure 2. Proportion seeking care at a hospital or clinic by observation characteristics
+### Figure 2. Proportion seeking care at a hospital or clinic by observation characteristics
 
 ```{r}
 f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
@@ -565,11 +568,11 @@ cowplot::plot_grid(f2a, f2b, f2c, f2d,
 
 <br>
 
-#### Figure S5. Proportion seeking care by study quality
+### Figure S5. Proportion seeking care by study quality
 
 Overall quality score is whether data is internally consistent + whether sample size was justified + whether the non-response was reported.
 
-```{r, fig.width = 8, fig.height = 7, message = TRUE}
+```{r, fig.width = 8, fig.height = 7}
 s5a <- plot_seekprop(df_hosp_lmic, 'quality_score', num_colors=4) +
   ggtitle('Overall quality score')
 
@@ -595,7 +598,7 @@ cowplot::plot_grid(s5a, s5b, s5c, s5d,
 
 <br>
 
-#### Figure 3. Relationship between care seeking and proportion under 5 years
+### Figure 3. Relationship between care seeking and proportion under 5 years
 
 ```{r}
 # set variables to keep
@@ -689,7 +692,7 @@ cowplot::plot_grid(f3a, f3b, f3c, f3d,
 
 <br>
 
-#### Figure 4. Proportion seeking care by source in LMICs
+### Figure 4. Proportion seeking care by source in LMICs
 
 ```{r}
 
@@ -724,9 +727,9 @@ cowplot::plot_grid(f4a, f4b,
                    nrow = 2)
 ```
 
-#### Proportion seeking care by source and study characteristic {.tabset}
+### Proportion seeking care by source and study characteristic {.tabset}
 
-##### Figure S6. Income group
+#### Figure S6. Income group
 
 ```{r, fig.width = 10, fig.height = 9}
 fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
@@ -738,7 +741,7 @@ fS6 <- plot_seekprop(sr_dat_sources, 'location_type',
 fS6 + facet_wrap('income_group', ncol = 1)
 ```
 
-##### Figure S7. Case definition
+#### Figure S7. Case definition
 
 ```{r, fig.width = 10, fig.height = 9}
 fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
@@ -750,7 +753,7 @@ fS7 <- plot_seekprop(sr_dat_sources, 'location_type',
 fS7 + facet_wrap('case_cat', ncol = 1)
 ```
 
-##### Figure S8. Self or child
+#### Figure S8. Self or child
 
 ```{r, fig.width = 10, fig.height = 9}
 fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
@@ -764,15 +767,15 @@ fS8 + facet_wrap('self_or_child', ncol = 1)
 
 <br>
 
-## Meta-analysis for LMICs
+## Adjusted estimates of care seeking at hospitals or clinics
 
-Our goal is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms in LMICs. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below). We'll start by testing these along with other potential covariates in univariate analyses.
+Our goal here is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms in LMICs. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below).
 
 i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
 ii. Cholera (acute watery diarrhea of any severity, including resulting in death) or severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
 iii. Gastroenteritis or other etiologies (diarrhea or vomiting, including specific etiologies eg rotavirus or e coli)
 
-We'll build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
+We build generalized linear models with a study-level random intercept following the approach of Wiens *et al* (2023) *PLOS Medicine*:
 
 1.  Unadjusted
 
@@ -799,14 +802,12 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
-sa <- FALSE # whether or not to run sensitivity analysis
+stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+would <- FALSE # whether or not we're running a "would you" analysis
 test <- FALSE # add a 'test' flag to run_id 
 
 # model script
-if (!sa) {
-  model_script <- here::here('code', 'meta_analysis_re.stan')
-} 
+model_script <- here::here('code', 'meta_analysis_re.stan')
 
 # coefficient equations corresponding to each model
 stan_mod_eqns <- list(
@@ -817,16 +818,20 @@ stan_mod_eqns <- list(
 ```
 
 ```{r prep data for Stan}
-# subset input data to diarrhea case definition
-#stan_dat <- sr_dat %>% filter(case_cat == 'Diarrhea')
-stan_dat <- sr_dat
+# subset input data to LMICs
+stan_dat <- sr_dat %>% filter(hic == 0)
 case_strat <- 'all'
 
 # add random effect label by observation
 stan_dat <- stan_dat %>% mutate(study_lab = 1:nrow(stan_dat))
 
+# data for "would you" analysis
+stan_dat_would <- sr_dat_would %>% mutate(study_lab = 1:nrow(sr_dat_would))
+
 # create a template table of all covariates and reference categories (for use when building tables later)
-cov_cats <- sr_dat %>% select_at(covs) %>%
+cov_cats <- sr_dat %>% 
+  filter(hic == 0) %>%
+  select_at(covs) %>%
   mutate(mult_choice = as.character(mult_choice),
          outbreak_desc = as.character(outbreak_desc)) %>%
   pivot_longer(covs, names_to = 'Variable', values_to = 'Category') %>%
@@ -834,7 +839,7 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
   arrange(Variable, Category) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 
-# sr_dat %>%
+# sr_dat %>% filter(hic == 0) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -842,14 +847,14 @@ cov_cats <- sr_dat %>% select_at(covs) %>%
 #   ungroup %>%
 #   pretty_table()
 # 
-# sr_dat %>%
+# sr_dat %>% filter(hic == 0) %>%
 #   summarize(`Weighted mean` = weighted.mean(propseek, n_did_survey),
 #             `Standard deviation` = sd(propseek)) %>%
 #   ungroup %>%
 #   pretty_table()
 ```
 
-### Prior predictive checks
+### Figure S9. Prior predictive checks
 
 For the primary analysis, we chose priors that matched the distribution of the data. Specifically, we used a Normal(-0.6,1.5) prior on alpha, where the mean of the distribution (-0.67) matches the median of the observation data (0.339) in logit space. The resulting prior predictive distribution has a median of 0.34 and a mean of 0.37.
 
@@ -868,7 +873,7 @@ stan_coef_eqn <- stan_mod_eqns[[stan_model]]
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model, 
                       '-priorcheck',
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -940,8 +945,6 @@ cowplot::plot_grid(s3aL, s3aM, s3aR,
 
 <br>
 
-### Unadjusted estimates {.tabset}
-
 ```{r run unadjusted Stan models}
 
 # run model 1 ----------------------------------------------------------
@@ -952,7 +955,7 @@ stan_coef_eqn <- stan_mod_eqns[[stan_model]]
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -995,7 +998,7 @@ for (i in 1:length(covs)) {
 
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
-                        ifelse(sa, '-sa', ''),
+                        ifelse(would, '-would', ''),
                         ifelse(test, '-test', ''))
   
   # file to save to
@@ -1044,7 +1047,7 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_cho
 
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
-                        ifelse(sa, '-sa', ''),
+                        ifelse(would, '-would', ''),
                         ifelse(test, '-test', ''))
   
   # file to save to
@@ -1090,7 +1093,7 @@ for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_cho
 
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
-                        ifelse(sa, '-sa', ''),
+                        ifelse(would, '-would', ''),
                         ifelse(test, '-test', ''))
   
   # file to save to
@@ -1140,7 +1143,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mul
 
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
-                        ifelse(sa, '-sa', ''),
+                        ifelse(would, '-would', ''),
                         ifelse(test, '-test', ''))
   
   # file to save to
@@ -1183,7 +1186,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mul
 
   # set model id to include in filename
   stan_run_id <- paste0(case_strat, '-', stan_model,
-                        ifelse(sa, '-sa', ''),
+                        ifelse(would, '-would', ''),
                         ifelse(test, '-test', ''))
   
   # file to save to
@@ -1228,7 +1231,7 @@ stan_coef_eqn <- stan_mod_eqns[[stan_model]]
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -1269,7 +1272,7 @@ stan_coef_eqn <- stan_mod_eqns[[stan_model]]
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -1301,6 +1304,176 @@ if (!file.exists(out_est_file) | stan_redo) {
   seekrate <- readRDS(out_est_file)
 }
 
+```
+
+```{r run "would you" Stan models}
+
+# "would you"
+# run model 1 ----------------------------------------------------------
+
+# which Stan model to run
+stan_model <- 'mod1' 
+would <- TRUE
+stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model,
+                      ifelse(would, '-would', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = here::here('code', 'meta_analysis_re_would.stan'),
+    dat_surveyed = stan_dat_would$n_would_survey,
+    dat_soughtcare = stan_dat_would$n_would,
+    dat_covars = stan_dat_would %>% select_at(covs),
+    re_ids = stan_dat_would$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+
+# run model 2 ----------------------------------------------------------
+
+# which Stan model to run
+stan_model <- 'mod2' 
+stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model,
+                      ifelse(would, '-would', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = here::here('code', 'meta_analysis_re_would.stan'),
+    dat_surveyed = stan_dat_would$n_would_survey,
+    dat_soughtcare = stan_dat_would$n_would,
+    dat_covars = stan_dat_would %>% select_at(covs),
+    re_ids = stan_dat_would$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+
+# run model 3 ----------------------------------------------------------
+
+# which Stan model to run
+stan_model <- 'mod3' 
+stan_coef_eqn <- stan_mod_eqns[[stan_model]]
+
+# set model id to include in filename
+stan_run_id <- paste0(case_strat, '-', stan_model,
+                      ifelse(would, '-would', ''),
+                      ifelse(test, '-test', ''))
+
+# file to save to
+out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                           paste0('propseek-', stan_run_id, '.rds'))
+
+if (!file.exists(out_est_file) | stan_redo) {
+  seekrate <- run_analysis_stan(
+    model_script = here::here('code', 'meta_analysis_re_would.stan'),
+    dat_surveyed = stan_dat_would$n_would_survey,
+    dat_soughtcare = stan_dat_would$n_would,
+    dat_covars = stan_dat_would %>% select_at(covs),
+    re_ids = stan_dat_would$study_lab,
+    run_id = stan_run_id,
+    coef_eqn = stan_coef_eqn,
+    redo = stan_redo
+  )
+
+  saveRDS(seekrate, out_est_file)
+  
+  # check model convergence and other diagnostics
+  stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                              paste0("stan_fit_", stan_run_id,".rds"))
+  stan_est <- readRDS(stan_out_file)
+  stan_est$cmdstan_diagnose()
+  #shinystan::launch_shinystan(stan_est)
+
+} else {
+  seekrate <- readRDS(out_est_file)
+}
+
+# run univariate analyses ----------------------------------------------
+
+# loop over covariates
+for (i in 1:length(covs)) {
+  
+  stan_model <- paste0('uni-', covs[[i]])
+  stan_coef_eqn <- covs[[i]]
+
+  # set model id to include in filename
+  stan_run_id <- paste0(case_strat, '-', stan_model,
+                        ifelse(would, '-would', ''),
+                        ifelse(test, '-test', ''))
+  
+  # file to save to
+  out_est_file <- here::here('data', 'generated_data', 'care_seeking_estimates',
+                             paste0('propseek-', stan_run_id, '.rds'))
+  
+  if (!file.exists(out_est_file) | stan_redo) {
+    print(paste0('Running univariate model for: ', covs[[i]]))
+    
+    seekrate <- run_analysis_stan(
+      model_script = here::here('code', 'meta_analysis_re_would.stan'),
+      dat_surveyed = stan_dat_would$n_would_survey,
+      dat_soughtcare = stan_dat_would$n_would,
+      dat_covars = stan_dat_would %>% select_at(covs[[i]]),
+      re_ids = stan_dat_would$study_lab,
+      run_id = stan_run_id,
+      coef_eqn = stan_coef_eqn,
+      redo = stan_redo
+    )
+  
+    saveRDS(seekrate, out_est_file)
+    
+    # check model convergence and other diagnostics
+    stan_out_file <- here::here("data", "generated_data", "model_fits", 
+                                paste0("stan_fit_", stan_run_id,".rds"))
+    stan_est <- readRDS(stan_out_file)
+    stan_est$cmdstan_diagnose()
+    #shinystan::launch_shinystan(stan_est)
+  
+  } else {
+    seekrate <- readRDS(out_est_file)
+  }
+}
 ```
 
 ```{r run sensitivity analyses with priors shifted for models 1-3}
@@ -1434,6 +1607,7 @@ for (prior in c('L', 'R')) {
 
 # which Stan model to run
 case_strat <- 'vc'
+would <- FALSE
 stan_model <- 'uni-outbreak_desc'
 stan_coef_eqn <- 'outbreak_desc'
 
@@ -1442,7 +1616,7 @@ stan_dat_vconly <- stan_dat %>% filter(case_cat == 'Severe diarrhea or cholera')
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -1479,6 +1653,7 @@ if (!file.exists(out_est_file) | stan_redo) {
 
 # which Stan model to run
 case_strat <- 'dia'
+would <- FALSE
 stan_model <- 'uni-recall_time'
 stan_coef_eqn <- 'recall_time'
 
@@ -1487,7 +1662,7 @@ stan_dat_dia <- stan_dat %>% filter(case_cat == 'Diarrhea')
 
 # set model id to include in filename
 stan_run_id <- paste0(case_strat, '-', stan_model,
-                      ifelse(sa, '-sa', ''),
+                      ifelse(would, '-would', ''),
                       ifelse(test, '-test', ''))
 
 # file to save to
@@ -1525,7 +1700,6 @@ if (!file.exists(out_est_file) | stan_redo) {
 #NB: still don't find significant differences when subset by case definition, although the etiologies approach significance
 df_meta1 <- df_age %>% 
   filter(prop_five == 0 | prop_five == 1) %>%
-  filter(hic == 0) %>%
   arrange(propseek)
 
 # add random effect variable
@@ -1536,6 +1710,7 @@ stan_model <- 'all_age'
 stan_coef_eqn <- 'prop_five'
 case_strat <- 'all'
 stan_redo <- FALSE
+would <- FALSE
 model_script <- here::here('code', 'meta_analysis_re.stan')
 
 # set model id to include in filename
@@ -1575,7 +1750,6 @@ if (!file.exists(out_est_file) | stan_redo) {
 # prep data
 df_age_strat <- df_age %>%
   filter(strat_age == 1) %>%
-  filter(hic == 0) %>%
   group_by_at('study_id') %>%
   mutate(n_strats = n()) %>%
   ungroup() %>%
@@ -1583,7 +1757,7 @@ df_age_strat <- df_age %>%
   # remove the study the looks only at 0-15 and 16-44
   filter(study_id != 49) %>%
   # aggregate by under/over five
-  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+  group_by_at(c('study_id', 'country_iso3', 'region',
                 'recall_time', 'case_cat', 'prop_five')) %>%
   summarize(n_did_survey = sum(n_did_survey), 
             n_did = sum(n_did)) %>%
@@ -1603,6 +1777,7 @@ df_meta2 <- df_meta2 %>% mutate(study_lab = 1:nrow(df_meta2))
 stan_model <- 'match_age' 
 stan_coef_eqn <- 'prop_five'
 case_strat <- 'all'
+would <- FALSE
 stan_redo <- FALSE
 model_script <- here::here('code', 'meta_analysis_re.stan')
 
@@ -1726,6 +1901,10 @@ prop_strat_mod3 <- stratify('mod3', 'all', cats_mod3, stan_mod_eqns)[[2]]
 prop_strat_mod3_saL <- stratify('mod3', sa = '-saL', 'all', cats_mod2, stan_mod_eqns)[[2]]
 prop_strat_mod3_saR <- stratify('mod3', sa = '-saR', 'all', cats_mod2, stan_mod_eqns)[[2]]
 
+# get overall care seeking proportion for unadjusted "would you" model, integrating over random effects
+prop_mod1_would <- stratify('mod1', 'all', sa = '-would',
+                            data.frame(alpha = 1, n = 1, prop = 1), stan_mod_eqns)[[1]]
+
 # main results ----------------------------------------------------------------
 # save unadjusted post-stratified proportion to mod_est data frame
 mod_ests <- rbind(mod_ests,
@@ -1734,6 +1913,17 @@ mod_ests <- rbind(mod_ests,
                              mean = mean(prop_mod1$pos, na.rm = T),
                              lower = quantile(prop_mod1$pos, probs = .025, na.rm = T),
                              upper = quantile(prop_mod1$pos, probs = .975, na.rm = T),
+                             row.names = NULL
+                             )
+                  )
+
+# save unadjusted "would you" post-stratified proportion to mod_est data frame
+mod_ests <- rbind(mod_ests,
+                  data.frame(run_id = 'all-mod1-would',
+                             stan_id = 'prop',
+                             mean = mean(prop_mod1_would$pos, na.rm = T),
+                             lower = quantile(prop_mod1_would$pos, probs = .025, na.rm = T),
+                             upper = quantile(prop_mod1_would$pos, probs = .975, na.rm = T),
                              row.names = NULL
                              )
                   )
@@ -1878,9 +2068,7 @@ mod_ests <- mod_ests %>%
          upper=ifelse(stan_id == 'prop', round(upper*100,1), upper))
 ```
 
-#### Bayesian approach
-
-##### Posterior distributions of the proportion of people seeking care
+### Figure S10. Posterior distributions of the proportion of people seeking care
 
 ```{r figS4, fig.width=7, fig.height=9}
 # distributions of alpha
@@ -1933,12 +2121,12 @@ cowplot::plot_grid(s4aL, s4aR,
 
 <br>
 
-##### Estimated proportion that seek care
+### Table S1. Estimated proportion that seek care
 
 ```{r tabS4}
 # mean adjusted proportion seeking care
 pr2 <- mod_ests %>%
-  filter(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR'), 
+  filter(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR', 'all-mod1-would'), 
          stan_id == 'prop') %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
@@ -1946,7 +2134,8 @@ pr2 <- mod_ests %>%
 # table S4
 tabS4 <- data.frame('Version' = c('Unadjusted', 
                                   'Unadjusted - shift prior left', 
-                                  'Unadjusted - shift prior right'),
+                                  'Unadjusted - shift prior right',
+                                  'Unadjusted - would you'),
                     'Proportion' = paste0(pr2[,2],' (',pr2[,1],' - ',pr2[,3],')'))
 
 names(tabS4) <- c('Version', 'Proportion (%)')
@@ -1959,7 +2148,7 @@ pretty_table(tabS4)
 
 <br>
 
-#### RE meta-anaysis a la 'meta'
+### FYI (not in paper): RE meta-anaysis a la 'meta'
 
 ```{r, fig.width = 8, fig.height = 31}
 
@@ -1974,282 +2163,9 @@ forest(ma_nobayes)
 
 <br>
 
-### Sub-analyses by age
+### Figure 5. Forest plots
 
-#### Studies that are either only adults or only children {.tabset}
-
-##### Bayesian approach
-
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
-
-```{r or children adults}
-age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
-  pivot_longer('prop_five', names_to = 'Variable', values_to = 'Category') %>%
-  unique() %>% 
-  arrange(Variable, Category) %>%
-  mutate(Reference = ifelse(duplicated(Variable), 0, 1),
-         Category = as.character(Category))
-
-mod_ests_age1 <- mod_ests %>%
-    filter(grepl('all-all_age', run_id) & stan_id != 'alpha') %>%
-  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
-
-pretty_table(mod_ests_age1)
-```
-
-<br>
-
-##### RE meta-analysis a la 'meta'
-
-```{r, fig.width = 8, fig.height = 28}
-# run meta-analysis with subgroup by age
-ma_age1 <- metaprop(n_did, n_did_survey, data = df_meta1, 
-                    subgroup = df_meta1$prop_five,
-                    studlab = paste0(df_meta1$study_id, '_', df_meta1$country_iso3), 
-                    method = 'GLMM', common = FALSE)
-
-ma_age1
-forest(ma_age1)
-```
-
-<br>
-
-#### Studies with care seeking stratified by age {.tabset}
-
-##### Bayesian approach
-
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
-
-```{r or children adults matched}
-mod_ests_age2 <- mod_ests %>%
-    filter(grepl('all-match_age', run_id) & stan_id != 'alpha') %>%
-  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
-
-pretty_table(mod_ests_age2)
-```
-
-<br>
-
-##### RE meta-analysis a la 'meta'
-
-```{r, fig.width = 8, fig.height = 7}
-# run meta-analysis with subgroup by age
-ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2, 
-                    subgroup = df_meta2$prop_five,
-                    studlab = paste0(df_meta2$study_id, '_', df_meta2$country_iso3), 
-                    method = 'GLMM', common = FALSE)
-
-ma_age2
-forest(ma_age2)
-```
-
-<br>
-
-### Univariate analyses
-
-Odds of seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
-
-```{r univariate odds ratios}
-mod_ests_uni <- mod_ests %>%
-    filter(grepl('all-uni', run_id) & stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_uni)
-```
-
-<br>
-
-### Tests for potential confounding {.tabset}
-
-In analyses below, the dependent variable is listed in the header.
-
-#### self_or_child (self/adult vs child)
-
-```{r self_or_child confounding}
-mod_ests_soc <- mod_ests %>%
-    filter(grepl('all-self_or_child', run_id) & stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_soc)
-```
-
-<br>
-
-#### outbreak_desc
-
-```{r outbreak_desc confounding}
-mod_ests_out <- mod_ests %>%
-    filter(grepl('all-outbreak_desc', run_id) & stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_out)
-```
-
-<br>
-
-#### case_cat
-
-##### Severe diarrhea or cholera
-
-```{r vc_severe confounding}
-mod_ests_vc <- mod_ests %>%
-    filter(grepl('all-vc_severe', run_id) & stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_vc)
-```
-
-<br>
-
-##### Gastroenteritis or non-V cholerae
-
-```{r ge_nonvc confounding}
-mod_ests_ge <- mod_ests %>%
-  filter(grepl('all-ge_nonvc', run_id) & stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_ge)
-```
-
-<br>
-
-### Sub-analyses
-
-#### Vc or severe diarrhea
-
-Is there still an effect of **being in an outbreak** when we subset the data to just case definitions specific to cholera or severe diarrhea (including death)?
-
-```{r}
-vc_coef <- mod_ests %>%
-  filter(run_id %in% c('vc-uni-outbreak_desc'), stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(vc_coef)
-```
-
-<br>
-
-#### Diarrhea
-
-Is there still an effect of **recall period** when we subset the data to just case definitions for general diarrhea (not severe or resulting in death)?
-
-```{r}
-dia_coef <- mod_ests %>%
-  filter(run_id %in% c('dia-uni-recall_time'), stan_id != 'alpha') %>%
-  or_table()
-
-pretty_table(dia_coef)
-```
-
-<br>
-
-### Multivariate analysis
-
-In the above analyses, found that we cannot separate effects of:
-
-1.  time_care, self_or_child, & case_cat (gastroenteritis or other etiology)
-2.  recall_time, outbreak_desc, & case_cat (V. cholerae or severe)
-
-The trends with self_or_child were also not significant or in the direction we expected, and so we're focusing on methods and case_cat in the multivariate analyses.
-
-We run two analyses below, adjusting for methods and then adjusting for methods and case_cat. We do not adjust for recall period in the case_cat analysis because there was potential collinearity/confounding between those variables.
-
-1.  In the first model, we test case_cat adjusting for time_care, assuming that case definition or symptoms are more directly related to care seeking than outbreak context or recall period (seems reasonable but can discuss).
-2.  In the second model, we only include methods variables: timing of care seeking.
-
-<br>
-
-#### Factors associated with variation in care seeking rates
-
-Odds that an individual with diarrhea seeks care for themselves or their child overall or by alternate case definitions, adjusting for different ways that the care seeking questions were asked (i.e., timing of care itself).
-
-```{r coefs}
-# pull mean coefficients
-c2 <- mod_ests %>%
-  filter(run_id %in% c('all-mod2'), stan_id != 'alpha')
-
-c3 <- mod_ests %>%
-  filter(run_id %in% c('all-mod3'), stan_id != 'alpha')
-
-# make tables
-or_table(c3) %>%
-  pretty_table(title = 'Model including study population')
-
-or_table(c2) %>%
-  pretty_table(title = 'Model including study population and case definition')
-```
-
-<br>
-
-### Stratified estimates of care seeking by category
-
-Stratifications correspond to questions that refer to any care seeking.
-
-```{r}
-
-# mean adjusted proportion positive
-cs <- mod_ests %>%
-  filter(stan_id == 'prop') %>%
-  dplyr::select(run_id, lower, mean, upper) %>%
-  mutate(run_id = ifelse(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR'), 'Unadjusted', run_id),
-         run_id = gsub(' \\(shift prior left\\)', '', run_id),
-         run_id = gsub(' \\(shift prior right\\)', '', run_id)) %>%
-  unique()
-
-# table
-tabs <- data.frame('Version' = c(rep('Main result', 5), 
-                                 rep('Shift prior left', 5), 
-                                 rep('Shift prior right', 5)),
-                    'Model' = rep(c('1', 
-                                    rep('2', 3),
-                                    rep('3', 1)), 3),
-                   'Variable' = cs$run_id,
-                   'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
-
-names(tabs) <- c('Version', 'Model', 'Variable', 'Proportion (%)')
-pretty_table(tabs)
-
-```
-
-<br>
-
-```{r fig5, fig.height = 4, fig.width = 8}
-# set colors
-pal <- c('grey30', brewer.pal(n=6, name='Dark2'))
-
-# update data frame for plotting
-cs_plot <- cs[1:5,] %>% 
-  mutate(facet = c('Unadjusted', 
-                   rep('Stratum: Caregiver; testing case definition', 3),
-                   rep('Stratum: Caregiver', 1))) 
-
-cs_plot <- cs_plot %>%
-  mutate(facet = factor(facet, levels = c(unique(cs_plot$facet)[1],
-                                          unique(cs_plot$facet)[3],
-                                          unique(cs_plot$facet)[2])))
-
-# positivity plot
-figs <- ggplot(cs_plot) +
-          geom_point(aes(x = run_id, y = mean, color = run_id), size = 2) +
-          geom_errorbar(aes(x = run_id, ymin = lower, ymax = upper, color = run_id), width = 0.3) +
-          scale_color_manual(values = pal) +
-          theme_bw() +
-          theme(legend.position = 'none') +
-          ylim(0,100) +
-          ylab('Proportion (%)') + xlab(NULL) +
-          scale_x_discrete(labels = label_wrap(15)) +
-          facet_grid(.~facet, scales = 'free_x', space = 'free_x') +
-          ggtitle('Proportion that sought care')
-
-figs
-
-```
-
-<br>
-
-### Forest plots
-
-The "estimated" results are the study-level props from the model that includes time_care and case_cat.
+The "estimated" results are the study-level props from the model that includes pop_cat and case_cat.
 
 ```{r}
 # underlying proportion seeking care by study
@@ -2343,14 +2259,255 @@ strat_est <- study_est %>%
     ungroup()
 ```
 
-```{r fig4a, fig.height = 14, fig.width = 10}
+```{r fig5a, fig.height = 14, fig.width = 10}
 dia_forest
 ```
 
-```{r fig4b, fig.height = 3, fig.width = 10}
+```{r fig5b, fig.height = 3, fig.width = 10}
 vc_forest
 ```
 
-```{r fig4c, fig.height = 5, fig.width = 10}
+```{r fig5c, fig.height = 5, fig.width = 10}
 ge_forest
+```
+
+<br>
+
+## Factors associated with variation in care seeking at hospitals or clinics
+
+### Table S2. Univariate analyses - did you
+
+Odds of actually seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
+
+```{r univariate odds ratios}
+mod_ests_uni <- mod_ests %>%
+    filter(grepl('all-uni', run_id) & stan_id != 'alpha') 
+
+mod_ests_uni_did <- mod_ests_uni %>%
+  filter(!grepl('would', run_id)) %>%
+  or_table()
+
+pretty_table(mod_ests_uni_did)
+```
+
+<br>
+
+### FYI (not included in paper): Univariate analyses - would you
+
+Odds of hypothetically seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
+
+```{r univariate odds ratios}
+mod_ests_uni_would <- mod_ests_uni %>%
+    filter(grepl('would', run_id)) %>%
+  or_table()
+
+pretty_table(mod_ests_uni_would)
+```
+
+<br>
+
+### Table S3. Sub-analyses by age: studies that are either only adults or only children
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
+
+```{r or children adults}
+age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
+  pivot_longer('prop_five', names_to = 'Variable', values_to = 'Category') %>%
+  unique() %>% 
+  arrange(Variable, Category) %>%
+  mutate(Reference = ifelse(duplicated(Variable), 0, 1),
+         Category = as.character(Category))
+
+mod_ests_age1 <- mod_ests %>%
+    filter(grepl('all-all_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age1)
+```
+
+<br>
+
+### Table S4. Sub-analyses by age: studies with care seeking stratified by age
+
+Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
+
+```{r or children adults matched}
+mod_ests_age2 <- mod_ests %>%
+    filter(grepl('all-match_age', run_id) & stan_id != 'alpha') %>%
+  or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
+
+pretty_table(mod_ests_age2)
+```
+
+<br>
+
+### FYI (not in paper): RE meta-analysis a la 'meta' by age
+
+```{r, fig.width = 8, fig.height = 7}
+# run meta-analysis with subgroup by age
+ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2, 
+                    subgroup = df_meta2$prop_five,
+                    studlab = paste0(df_meta2$study_id, '_', df_meta2$country_iso3), 
+                    method = 'GLMM', common = FALSE)
+
+ma_age2
+forest(ma_age2)
+```
+
+<br>
+
+### Table S5. Tests for potential confounding {.tabset}
+
+In analyses below, the dependent variable is listed in the header.
+
+#### self_or_child (self/adult vs child)
+
+```{r self_or_child confounding}
+mod_ests_soc <- mod_ests %>%
+    filter(grepl('all-self_or_child', run_id) & stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(mod_ests_soc)
+```
+
+<br>
+
+#### outbreak_desc
+
+```{r outbreak_desc confounding}
+mod_ests_out <- mod_ests %>%
+    filter(grepl('all-outbreak_desc', run_id) & stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(mod_ests_out)
+```
+
+<br>
+
+#### case_cat
+
+##### Severe diarrhea or cholera
+
+```{r vc_severe confounding}
+mod_ests_vc <- mod_ests %>%
+    filter(grepl('all-vc_severe', run_id) & stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(mod_ests_vc)
+```
+
+<br>
+
+##### Gastroenteritis or non-V cholerae
+
+```{r ge_nonvc confounding}
+mod_ests_ge <- mod_ests %>%
+  filter(grepl('all-ge_nonvc', run_id) & stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(mod_ests_ge)
+```
+
+<br>
+
+### Table S6. Sub-analyses
+
+#### Vc or severe diarrhea
+
+Is there still an effect of **being in an outbreak** when we subset the data to just case definitions specific to cholera or severe diarrhea (including death)?
+
+```{r}
+vc_coef <- mod_ests %>%
+  filter(run_id %in% c('vc-uni-outbreak_desc'), stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(vc_coef)
+```
+
+<br>
+
+#### Diarrhea
+
+Is there still an effect of **recall period** when we subset the data to just case definitions for general diarrhea (not severe or resulting in death)?
+
+```{r}
+dia_coef <- mod_ests %>%
+  filter(run_id %in% c('dia-uni-recall_time'), stan_id != 'alpha') %>%
+  or_table()
+
+pretty_table(dia_coef)
+```
+
+<br>
+
+### Table 2. Factors associated with variation in care seeking rates
+
+Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
+
+```{r coefs}
+# pull mean coefficients
+c2 <- mod_ests %>%
+  filter(run_id %in% c('all-mod2'), stan_id != 'alpha')
+
+# c3 <- mod_ests %>%
+#   filter(run_id %in% c('all-mod3'), stan_id != 'alpha')
+# 
+# # make tables
+# or_table(c3) %>%
+#   pretty_table(title = 'Model including study population')
+
+or_table(c2) %>%
+  pretty_table(title = 'Model including study population and case definition')
+```
+
+<br>
+
+### FYI (not included in paper): Factors associated with variation in hypothetical care seeking rates
+
+Odds that an individual hypothetically seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
+
+```{r coefs}
+# pull mean coefficients
+c2 <- mod_ests %>%
+  filter(run_id %in% c('all-mod2-would'), stan_id != 'alpha')
+
+# c3 <- mod_ests %>%
+#   filter(run_id %in% c('all-mod3-would'), stan_id != 'alpha')
+# 
+# # make tables
+# or_table(c3) %>%
+#   pretty_table(title = 'Model including study population')
+
+or_table(c2) %>%
+  pretty_table(title = 'Model including study population and case definition')
+```
+
+### Table S7. Stratified estimates of care seeking by category
+
+Stratifications correspond to questions that refer to care seeking for a caregiver.
+
+```{r}
+
+# mean adjusted proportion positive
+cs <- mod_ests %>%
+  filter(stan_id == 'prop' & run_id != 'all-mod1-would') %>%
+  dplyr::select(run_id, lower, mean, upper) %>%
+  mutate(run_id = ifelse(run_id %in% c('all-mod1', 'all-mod1-saL', 'all-mod1-saR'), 'Unadjusted', run_id),
+         run_id = gsub(' \\(shift prior left\\)', '', run_id),
+         run_id = gsub(' \\(shift prior right\\)', '', run_id)) %>%
+  unique()
+
+# table
+tabs <- data.frame('Version' = c(rep('Main result', 5), 
+                                 rep('Shift prior left', 5), 
+                                 rep('Shift prior right', 5)),
+                    'Model' = rep(c('1', 
+                                    rep('2', 3),
+                                    rep('3', 1)), 3),
+                   'Variable' = cs$run_id,
+                   'Proportion' = paste0(cs[,3],' (',cs[,2],' - ',cs[,4],')'))
+
+names(tabs) <- c('Version', 'Model', 'Variable', 'Proportion (%)')
+pretty_table(tabs)
+
 ```
