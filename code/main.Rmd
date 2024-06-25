@@ -18,7 +18,7 @@ knitr::opts_knit$set(root.dir = here::here())
 ```{r preamble, warning = TRUE}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(
-  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot, meta,
+  countrycode, here, readxl, lubridate, tidyverse, ggplot2, doParallel, boot, meta, metafor,
   sf, raster, RColorBrewer, cowplot, kableExtra, flextable, scales, RVAideMemoire
 )
 
@@ -27,9 +27,6 @@ source(here::here('code', 'utils.R'))
 ```
 
 ```{r load and tidy data}
-
-#TODO: go through and make sure the "observations" are all accurate, numbers match in tables, etc.
-#      then go through and update al model results, and numbers in the manuscript
 
 # load systematic review data
 df <- read.csv(here::here('data', 'extracted_data', 'data_extractions.csv'))
@@ -236,6 +233,10 @@ data_loc <- df %>%
   dplyr::select_at(c('study_id','country_iso3', 'region', covs,
                      'admin0', 'admin1', 'admin2', 'admin3', 'place_name')) %>%
   unique() %>%
+  # collapse recall time
+  mutate(recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time <= 30, '14-30 days',
+                                          ifelse(recall_time > 30, '42-365 days', 'Unknown')))) %>%
   # only keep location names for lowest admin level
   mutate(admin0 = ifelse(admin1 == '' & admin2 == '' & admin3 == '', admin0, ''),
          admin1 = ifelse(admin2 == '' & admin3 == '', admin1, ''),
@@ -303,6 +304,11 @@ coverage_time <- df %>%
   # select relevant study-period columns
   dplyr::select_at(c('study_id','country_iso3', 'region', covs, 'sampling_end')) %>%
   unique() %>%
+  # collapse recall time
+  mutate(recall_time = ifelse(recall_time < 14, '2-7 days',
+                                   ifelse(recall_time == 14 | recall_time <= 30, '14-30 days',
+                                          ifelse(recall_time > 30, '42-365 days', 'Unknown')))) %>%
+  # time periods
   mutate(time_period = case_when(sampling_end <= as.Date("2004-12-31") ~ "2000~2004",
                                  sampling_end > as.Date("2004-12-31") & sampling_end <= as.Date("2009-12-31") ~ "2005~2009",
                                  sampling_end > as.Date("2009-12-31") & sampling_end <= as.Date("2014-12-31") ~ "2010~2014",
@@ -358,21 +364,16 @@ cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
 
 ```{r table1}
 
-#TODO: why is there one more observation in this compared to the maps datasets
-
 # prep variables for table
 schar <- df %>% 
   # format variables
   mutate(recall_time = ifelse(recall_time < 14, '2-7 days',
-                                   ifelse(recall_time == 14 | recall_time == 15, '14-15 days',
-                                          ifelse(recall_time > 15 & recall_time <= 30, '27-30 days', 
-                                                 ifelse(recall_time > 30 & recall_time <= 90, '42-90 days',
-                                                        ifelse(recall_time > 90, '170-365 days', 'Unknown'))))),
+                                   ifelse(recall_time == 14 | recall_time <= 30, '14-30 days',
+                                          ifelse(recall_time > 30, '42-365 days', 'Unknown'))),
          mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
          outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
   # sum up number of tests and sample sizes by observation
-  dplyr::select_at(c('study_id', 'study_type', 'sampling_method', 'country_iso3', 
-                     'income_group', covs)) %>%
+  dplyr::select_at(c('study_id', 'country_iso3', 'income_group', covs)) %>%
   unique() %>%
   dplyr::select(-study_id, -country_iso3) 
 
@@ -380,8 +381,7 @@ schar <- df %>%
 #   # format variables
 #   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
 #   # sum up number of tests and sample sizes by observation
-#   dplyr::select_at(c('study_id', 'study_type', 'sampling_method', 'country_iso3',
-#                      'income_group', covs)) %>%
+#   dplyr::select_at(c('study_id', 'country_iso3', 'income_group', covs)) %>%
 #   unique() %>%
 #   dplyr::select(-study_id, -country_iso3) %>%
 #   filter(recall_time > 30)
@@ -802,7 +802,7 @@ pacman::p_load('cmdstanr', 'parallel')
 options(mc.cores = parallel::detectCores() - 2)
 
 # Stan settings
-stan_redo <- TRUE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
+stan_redo <- FALSE # set this to TRUE to re-run the stan_run_id corresponding to the stan_model and draws
 would <- FALSE # whether or not we're running a "would you" analysis
 test <- FALSE # add a 'test' flag to run_id 
 
@@ -2152,8 +2152,10 @@ pretty_table(tabS4)
 
 ```{r, fig.width = 8, fig.height = 31}
 
-ma_nobayes <- metaprop(n_did, n_did_survey, data = arrange(sr_dat, propseek), 
-                       studlab = paste0(sr_dat$study_id, '_', sr_dat$country_iso3), 
+meta_dat <- sr_dat %>% filter(hic == 0)
+
+ma_nobayes <- metaprop(n_did, n_did_survey, data = arrange(meta_dat, propseek), 
+                       studlab = paste0(meta_dat$study_id, '_', meta_dat$country_iso3), 
                        method = 'GLMM', common = FALSE)
 
 ma_nobayes
@@ -2292,7 +2294,7 @@ pretty_table(mod_ests_uni_did)
 
 <br>
 
-### FYI (not included in paper): Univariate analyses - would you
+### FYI (not in paper): Univariate analyses - would you
 
 Odds of hypothetically seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
 
@@ -2352,6 +2354,37 @@ ma_age2 <- metaprop(n_did, n_did_survey, data = df_meta2,
 
 ma_age2
 forest(ma_age2)
+```
+
+<br>
+
+
+### FYI (not in paper): Meta-regression a la 'metafor' by age
+
+```{r}
+df_meta2 <- df_meta2 %>%
+  mutate(vi = prop_var(propseek, n_did_survey),
+         yi = logit(propseek))
+
+mr1 <- rma(yi, vi, mods = ~ prop_five, 
+           data = df_meta2, digits = 3)
+
+mr2 <- rma.mv(yi, vi, mods = ~ prop_five, 
+              random = ~ prop_five | study_id, struct = 'DIAG',
+              data = df_meta2, digits = 3)
+```
+
+Residual heterogeneity (tau2) is the same between groups
+
+```{r, message = TRUE}
+mr1
+```
+<br>
+
+Allowing amounts of residual heterogeneity (tau2) to be different between groups
+
+```{r, message = TRUE}
+mr2
 ```
 
 <br>
@@ -2462,7 +2495,7 @@ or_table(c2) %>%
 
 <br>
 
-### FYI (not included in paper): Factors associated with variation in hypothetical care seeking rates
+### FYI (not in paper): Factors associated with variation in hypothetical care seeking rates
 
 Odds that an individual hypothetically seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
 
@@ -2513,3 +2546,58 @@ names(tabs) <- c('Version', 'Model', 'Variable', 'Proportion (%)')
 pretty_table(tabs)
 
 ```
+
+<br>
+
+### FYI (not in paper): Sub-grpup analysis a la 'meta' by case definition
+
+```{r, fig.width = 8, fig.height = 36}
+
+ma_casedef <- metaprop(n_did, n_did_survey, data = arrange(meta_dat, propseek), 
+                       subgroup = meta_dat$case_cat,
+                       studlab = paste0(meta_dat$study_id, '_', meta_dat$country_iso3), 
+                       method = 'GLMM', common = FALSE)
+
+ma_casedef
+forest(ma_casedef)
+
+```
+
+<br>
+
+### FYI (not in paper): Meta-regression a la 'metafor' by case definition
+
+To do this with logit(proportion) as outcome, need to drop Cuban study where 100% sought care.
+
+```{r}
+
+# https://metafor-project.org/doku.php/tips:comp_two_independent_estimates
+
+meta_dat <- meta_dat %>%
+  filter(study_id != 66) %>%
+  mutate(vi = prop_var(propseek, n_did_survey),
+         yi = logit(propseek))
+
+mr1 <- rma(yi, vi, mods = ~ case_cat, 
+           random = ~ case_cat | study_id,
+           data = meta_dat, digits = 3)
+
+mr2 <- rma.mv(yi, vi, mods = ~ case_cat, 
+              random = ~ case_cat | study_id, struct = 'DIAG',
+              data = meta_dat, digits = 3)
+```
+
+Residual heterogeneity (tau2) is the same between groups
+
+```{r, message = TRUE}
+mr1
+```
+
+<br>
+
+Allowing amounts of residual heterogeneity (tau2) to be different between groups
+
+```{r, message = TRUE}
+mr2
+```
+
