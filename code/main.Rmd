@@ -2482,6 +2482,8 @@ or_table(c2) %>%
   pretty_table(title = 'Model including study population and case definition')
 ```
 
+<br>
+
 ### Table S7. Stratified estimates of care seeking by category
 
 Stratifications correspond to questions that refer to care seeking for a caregiver.
