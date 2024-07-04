@@ -46,7 +46,7 @@ pretty_table <- function(intab, title = NULL) {
 or_table <- function(coef_df, cov_vector = covs, cov_cats_df = cov_cats) {
   
   # get odds ratios
-  df_or <- data.frame('Category' = gsub(paste(cov_vector, collapse = '|'), '', coef_df$stan_id),
+  df_or <- data.frame('Category' = gsub(paste(cov_vector, collapse = '|'), '', coef_df$mod_id),
                       'Odds ratio' = paste0(round(coef_df[,3],2),' (',
                                             round(coef_df[,4],2),' - ',
                                             round(coef_df[,5],2),')'),
@@ -57,7 +57,7 @@ or_table <- function(coef_df, cov_vector = covs, cov_cats_df = cov_cats) {
   # get variable names
   df_or <- df_or %>%
     mutate(Category = ifelse(Category == '', '1', Category), # binary variables
-           Variable = gsub(paste(df_or$Category, collapse = '|'), '', coef_df$stan_id),
+           Variable = gsub(paste(df_or$Category, collapse = '|'), '', coef_df$mod_id),
            `Odds ratio` = Odds.ratio) %>%
     dplyr::select(Variable, Category, `Odds ratio`, Significant)
   
