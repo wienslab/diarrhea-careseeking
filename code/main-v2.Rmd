@@ -116,7 +116,7 @@ covs <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
 # proportion seeking care for meta-analysis primary dataset
 # aggregate across stratifications that we're not including as covariates or stratifications
 sr_dat <- df %>%
-  # filter to hospital/clinic (not private) and diarrhea (general)
+  # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
   group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 
@@ -149,7 +149,7 @@ sr_dat <- df %>%
 sr_dat_would <- df_would %>%
   # restrict to LMICs
   filter(hic == 0) %>%
-  # filter to hospital/clinic (not private) and diarrhea (general)
+  # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
   group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
@@ -181,12 +181,21 @@ sr_dat_would <- df_would %>%
 sr_dat_sources <- df %>%
   # restrict to LMICs
   filter(hic == 0) %>%
+  # group public hospital/clinic with general hospital/clinic for consistency with rest of paper
+  mutate(location_type = ifelse(location_type == 'Public Hospital/Clinic', 'Hospital/Clinic', location_type)) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
   group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
   summarize(n_did_survey = n_did_survey,
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
   ungroup() %>%
   unique() %>%
+  # format variables, combining some to reduce combinations
+  mutate(recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
+         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
+         location_desc = ifelse(location_desc == 'Urban', 'Urban',
+                                ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
+                                       'Urban and non-urban')),
+         pop_cat = ifelse(pop_cat %in% c('Internally Displaced Person', 'Patient at health facility'), 'Other resident', pop_cat)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
   summarize(n_did_survey = sum(n_did_survey), 
@@ -446,15 +455,6 @@ fS3a <- plot_seekprop(df_hosp, 'region', num_colors=10) +
 fS3b <- plot_seekprop(df_hosp, 'region', num_colors=10) +
   ggtitle('Geographic region & case definition') +
   facet_wrap('case_cat', ncol = 1)
-
-# df_hosp %>%
-#   group_by(region) %>%
-#   summarize(median = median(propseek),
-#             N = length(propseek),
-#             IQR_L = quantile(propseek, 0.25),
-#             IQR_R = quantile(propseek, 0.75)) %>%
-#   ungroup %>%
-#   pretty_table()
 ```
 
 ```{r, fig.width = 8, fig.height = 11}
@@ -484,15 +484,6 @@ fS4a <- plot_seekprop(df_hosp, 'income_group', num_colors=4) +
 fS4b <- plot_seekprop(df_hosp, 'income_group', num_colors=8) +
   ggtitle('World Bank income classification & case definition') +
   facet_wrap('case_cat', ncol = 1)
-
-# df_hosp %>%
-#   group_by(income_group) %>%
-#   summarize(median = median(propseek),
-#             N = length(propseek),
-#             IQR_L = quantile(propseek, 0.25),
-#             IQR_R = quantile(propseek, 0.75)) %>%
-#   ungroup %>%
-#   pretty_table()
 ```
 
 ```{r, fig.width = 5, fig.height = 11}
@@ -508,7 +499,7 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
   ggtitle('Diarrhea case definition')
 
-# df_hosp %>%
+# df_hosp_lmic %>%
 #   group_by(case_cat) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
@@ -522,7 +513,7 @@ f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
 f2b <- plot_seekprop(df_hosp_lmic, 'pop_cat', num_colors=6) +
   ggtitle('Survey respondent')
 
-# df_hosp %>%
+# df_hosp_lmic %>%
 #   group_by(time_care) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
@@ -536,7 +527,7 @@ f2b <- plot_seekprop(df_hosp_lmic, 'pop_cat', num_colors=6) +
 f2c <- plot_seekprop(df_hosp_lmic, 'outbreak_desc', num_colors=2) +
   ggtitle('Study describes an outbreak')
 
-# df_hosp %>%
+# df_hosp_lmic %>%
 #   group_by(outbreak_desc) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
@@ -550,7 +541,7 @@ f2c <- plot_seekprop(df_hosp_lmic, 'outbreak_desc', num_colors=2) +
 f2d <- plot_seekprop(df_hosp_lmic, 'self_or_child', num_colors=3) +
   ggtitle('Self, child, or other/combination')
 
-# df_hosp %>%
+# df_hosp_lmic %>%
 #   group_by(self_or_child) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
@@ -719,6 +710,16 @@ f4b <- plot_seekprop(sr_dat_sources %>% filter(time_care == 'First source'),
 #   ungroup %>%
 #   arrange(-median) %>%
 #   pretty_table()
+
+# sr_dat_sources %>% filter(time_care == 'First source') %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   arrange(-median) %>%
+#   pretty_table()
 ```
 
 ```{r, fig.width = 9, fig.height = 7}
@@ -763,6 +764,26 @@ fS8 <- plot_seekprop(sr_dat_sources, 'location_type',
   ggtitle(NULL)
 
 fS8 + facet_wrap('self_or_child', ncol = 1)
+
+# sr_dat_sources %>% filter(self_or_child == 'Self') %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   arrange(-median) %>%
+#   pretty_table()
+# 
+# sr_dat_sources %>% filter(self_or_child == 'Child') %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   arrange(-median) %>%
+#   pretty_table()
 ```
 
 <br>
@@ -799,6 +820,7 @@ We build generalized linear models with a study-level random intercept using the
 ```{r prep data for meta-analysis}
 # subset input data to LMICs
 meta_dat <- sr_dat %>% filter(hic == 0)
+#TODO: add stratified results to Table S7, S11, and S12
 case_strat <- 'all'
 
 # add random effect label by observation
