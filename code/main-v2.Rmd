@@ -79,11 +79,11 @@ df <- df %>%
   # clean up self or child
   mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Other', self_or_child)) %>%
   # create standard case definitions
-  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or non-Vc etiologies', 
+  mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or other etiologies', 
                            ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
                                   ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
                                                          'Cholera (watery diarrhea)', 'Cholera death'), 'Severe diarrhea or cholera',
-                                                                'Gastroenteritis or non-Vc etiologies')))) %>%
+                                                                'Gastroenteritis or other etiologies')))) %>%
   # create standard population category
   mutate(pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
                                          'Street dweller', 'University student', 'Other',
@@ -406,10 +406,14 @@ schar %>%
                                   ifelse(variable == 'Outbreak desc', 'Outbreak described', variable)))) %>%
   pretty_table()
 
-# schar %>%
-#   summarize_cats() %>%
-#   flextable() %>%
-#   save_as_docx(path = here::here('code/tables/table1.docx'))
+schar %>%
+  summarize_cats() %>%
+  arrange(desc(variable), desc(Percent)) %>%
+  mutate(variable = ifelse(variable == 'Pop cat', 'Study population',
+                           ifelse(variable == 'Case cat', 'Case definition',
+                                  ifelse(variable == 'Outbreak desc', 'Outbreak described', variable)))) %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/table1.docx'))
 ```
 
 <br>
@@ -457,7 +461,7 @@ fS3b <- plot_seekprop(df_hosp, 'region', num_colors=10) +
   facet_wrap('case_cat', ncol = 1)
 ```
 
-```{r, fig.width = 8, fig.height = 11}
+```{r figS3, fig.width = 8, fig.height = 11}
 cowplot::plot_grid(fS3a, fS3b, labels = c('A', 'B'), 
                    nrow = 2, rel_heights = c(0.4,1))
 ```
@@ -486,7 +490,7 @@ fS4b <- plot_seekprop(df_hosp, 'income_group', num_colors=8) +
   facet_wrap('case_cat', ncol = 1)
 ```
 
-```{r, fig.width = 5, fig.height = 11}
+```{r figS4, fig.width = 5, fig.height = 11}
 cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'), 
                    nrow = 2, rel_heights = c(0.4,1))
 ```
@@ -551,7 +555,7 @@ f2d <- plot_seekprop(df_hosp_lmic, 'self_or_child', num_colors=3) +
 #   pretty_table()
 ```
 
-```{r, fig.width = 9, fig.height = 7}
+```{r fig2, fig.width = 9, fig.height = 7}
 cowplot::plot_grid(f2a, f2b, f2c, f2d,
                    labels = c('A', 'B', 'C', 'D'),
                    nrow = 2, rel_widths = c(0.85, 1))
@@ -563,7 +567,7 @@ cowplot::plot_grid(f2a, f2b, f2c, f2d,
 
 Overall quality score is whether data is internally consistent + whether sample size was justified + whether the non-response was reported.
 
-```{r, fig.width = 8, fig.height = 7}
+```{r figS5, fig.width = 8, fig.height = 7}
 s5a <- plot_seekprop(df_hosp_lmic, 'quality_score', num_colors=4) +
   ggtitle('Overall quality score')
 
@@ -609,7 +613,7 @@ df_age <- df %>%
   # format variables, combining some to reduce combinations
   mutate(recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
-         case_cat = ifelse(case_cat == 'Gastroenteritis or non-Vc etiologies', 'Gastroenteritis', case_cat)) %>%
+         case_cat = ifelse(case_cat == 'Gastroenteritis or other etiologies', 'Gastroenteritis', case_cat)) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', vars)) %>%
   summarize(n_did_survey = sum(n_did_survey), 
@@ -675,7 +679,7 @@ f3d <- f3c + facet_wrap('case_cat')
 #   pretty_table()
 ```
 
-```{r, fig.width = 9, fig.height = 7}
+```{r fig3, fig.width = 9, fig.height = 7}
 cowplot::plot_grid(f3a, f3b, f3c, f3d,
                    labels = c('A', 'B', 'C', 'D'),
                    nrow = 2, rel_widths = c(0.5, 1))
@@ -722,7 +726,7 @@ f4b <- plot_seekprop(sr_dat_sources %>% filter(time_care == 'First source'),
 #   pretty_table()
 ```
 
-```{r, fig.width = 9, fig.height = 7}
+```{r fig4, fig.width = 9, fig.height = 7}
 cowplot::plot_grid(f4a, f4b,
                    labels = c('A', 'B'),
                    nrow = 2)
@@ -732,7 +736,7 @@ cowplot::plot_grid(f4a, f4b,
 
 #### Figure S6. Income group
 
-```{r, fig.width = 10, fig.height = 9}
+```{r figS6, fig.width = 10, fig.height = 9}
 fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -744,7 +748,7 @@ fS6 + facet_wrap('income_group', ncol = 1)
 
 #### Figure S7. Case definition
 
-```{r, fig.width = 10, fig.height = 9}
+```{r figS7, fig.width = 10, fig.height = 9}
 fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -756,7 +760,7 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 
 #### Figure S8. Self or child
 
-```{r, fig.width = 10, fig.height = 9}
+```{r figS8, fig.width = 10, fig.height = 9}
 fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -820,14 +824,17 @@ We build generalized linear models with a study-level random intercept using the
 ```{r prep data for meta-analysis}
 # subset input data to LMICs
 meta_dat <- sr_dat %>% filter(hic == 0)
-#TODO: add stratified results to Table S7, S11, and S12
 case_strat <- 'all'
 
 # add random effect label by observation
-meta_dat <- meta_dat %>% mutate(study_lab = 1:nrow(meta_dat))
+meta_dat <- meta_dat %>% 
+  mutate(study_lab = 1:nrow(meta_dat)) %>%
+  arrange(propseek)
 
 # data for "would you" analysis
-meta_dat_would <- sr_dat_would %>% mutate(study_lab = 1:nrow(sr_dat_would))
+meta_dat_would <- sr_dat_would %>% 
+  mutate(study_lab = 1:nrow(sr_dat_would)) %>%
+  arrange(propseek)
 
 # create a template table of all covariates and reference categories (for use when building tables later)
 cov_cats <- sr_dat %>% 
@@ -860,21 +867,21 @@ cov_cats <- sr_dat %>%
 ```{r run unadjusted meta-analyses}
 
 # did you seek care
-ma_unadj <- metaprop(n_did, n_did_survey, data = arrange(meta_dat, propseek), 
-                     #TODO: update this label to something more informative
-                     studlab = paste0(meta_dat$study_id, '_', meta_dat$country_iso3), 
+ma_unadj <- metaprop(n_did, n_did_survey, data = meta_dat, 
+                     studlab = paste0(meta_dat$country_iso3, ' (', meta_dat$study_id, ') ', 
+                                      meta_dat$self_or_child, ', ', meta_dat$case_cat), 
                      method = 'GLMM', common = FALSE, prediction = TRUE)
 
 # would you seek care
-ma_unadj_would <- metaprop(n_would, n_would_survey, data = arrange(meta_dat_would, propseek), 
-                           #TODO: update this label to something more informative
-                           studlab = paste0(meta_dat_would$study_id, '_', meta_dat_would$country_iso3), 
+ma_unadj_would <- metaprop(n_would, n_would_survey, data = meta_dat_would, 
+                           studlab = paste0(meta_dat_would$country_iso3, ' (', meta_dat_would$study_id, ') ', 
+                                            meta_dat_would$self_or_child, ', ', meta_dat_would$case_cat), 
                            method = 'GLMM', common = FALSE, prediction = TRUE)
 ```
 
 ### Figure S9. Forest plot for unadjusted meta-analysis of whether people sought care at a hospital or clinic for an actual diarrhea episode
 
-```{r, fig.width = 8, fig.height = 31}
+```{r figS9, fig.width = 10, fig.height = 31}
 
 ma_unadj
 
@@ -883,7 +890,7 @@ forest(ma_unadj)
 
 ### Figure S10. Forest plot for unadjusted meta-analysis of whether people would seek care at a hospital or clinic for a hypothetical diarrhea episode
 
-```{r, fig.width = 8, fig.height = 7}
+```{r figS10, fig.width = 10, fig.height = 7}
 
 ma_unadj_would
 
@@ -1070,8 +1077,8 @@ for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_cho
 
 ```{r test for confounding with case_cat}
 
-# data to just look at either diarrhea and 1) vc or severe, or 2) gastro or non-vc
-meta_dat_vc <- meta_dat %>% filter(case_cat != 'Gastroenteritis or non-Vc etiologies')
+# data to just look at either diarrhea and 1) vc or severe, or 2) gastro or other
+meta_dat_vc <- meta_dat %>% filter(case_cat != 'Gastroenteritis or other etiologies')
 meta_dat_ge <- meta_dat %>% filter(case_cat != 'Severe diarrhea or cholera')
 
 # loop over covariates for Severe diarrhea or cholera  -------------------------------
@@ -1381,24 +1388,25 @@ mr_fit <- rma(measure = 'PLO',
 # mean adjusted proportion seeking care
 pr2 <- mod_ests %>%
   filter(run_id %in% c('all-mod1', 'all-mod1-would'), 
-         mod_id == 'prop') %>%
+         mod_id == 'prop' | mod_id == 'prop_pred') %>%
   arrange(run_id) %>%
   dplyr::select(lower, mean, upper)
 
 pr2 <- round(pr2, 3)*100
 
 # table S1
-#TODO: add prediction interval
-tabS1 <- data.frame('Version' = c('Unadjusted - did you', 
-                                  'Unadjusted - would you'),
+tabS1 <- data.frame('Version' = c('Fit - did you', 
+                                  'Prediction - did you',
+                                  'Fit - would you',
+                                  'Prediction - would you'),
                     'Proportion' = paste0(pr2[,2],' (',pr2[,1],' - ',pr2[,3],')'))
 
 names(tabS1) <- c('Version', 'Proportion (%)')
 pretty_table(tabS1)
 
-# tabS1 %>%
-#   flextable() %>%
-#   save_as_docx(path = here::here('code/tables/tableS1.docx'))
+tabS1 %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS1.docx'))
 ```
 
 <br>
@@ -1418,6 +1426,10 @@ mod_ests_uni_did <- mod_ests_uni %>%
   or_table()
 
 pretty_table(mod_ests_uni_did)
+
+mod_ests_uni_did %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS2.docx'))
 ```
 
 <br>
@@ -1439,6 +1451,10 @@ mod_ests_age1 <- mod_ests %>%
   or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
 
 pretty_table(mod_ests_age1)
+
+mod_ests_age1 %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS3.docx'))
 ```
 
 <br>
@@ -1453,6 +1469,10 @@ mod_ests_age2 <- mod_ests %>%
   or_table(cov_vector = 'prop_five', cov_cats_df = age_cats)
 
 pretty_table(mod_ests_age2)
+
+mod_ests_age2 %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS4.docx'))
 ```
 
 <br>
@@ -1495,6 +1515,10 @@ mod_ests_vc <- mod_ests %>%
   or_table()
 
 pretty_table(mod_ests_vc)
+
+mod_ests_vc %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS5.docx'))
 ```
 
 <br>
@@ -1523,6 +1547,10 @@ vc_coef <- mod_ests %>%
   or_table()
 
 pretty_table(vc_coef)
+
+vc_coef %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS6-1.docx'))
 ```
 
 <br>
@@ -1536,7 +1564,11 @@ dia_coef <- mod_ests %>%
   filter(run_id %in% c('dia-uni-recall_time'), mod_id != 'alpha') %>%
   or_table()
 
-pretty_table(dia_coef)
+pretty_table(dia_coef) 
+
+dia_coef %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/tableS6-2.docx'))
 ```
 
 <br>
@@ -1550,13 +1582,70 @@ Odds that an individual seeks care for themselves or their child overall or by a
 c2 <- mod_ests %>%
   filter(run_id %in% c('all-mod2'), mod_id != 'alpha')
 
-# c3 <- mod_ests %>%
-#   filter(run_id %in% c('all-mod3'), mod_id != 'alpha')
-# 
-# # make tables
-# or_table(c3) %>%
-#   pretty_table(title = 'Model including study population')
-
 or_table(c2) %>%
   pretty_table(title = 'Model including study population and case definition')
+
+or_table(c2) %>%
+  flextable() %>%
+  save_as_docx(path = here::here('code/tables/table2.docx'))
+```
+
+<br>
+
+```{r run stratified meta-analyses}
+
+# Diarrhea
+meta_dat_dia <- meta_dat %>% filter(case_cat == 'Diarrhea')
+ma_dia <- metaprop(n_did, n_did_survey, data = meta_dat_dia, 
+                   studlab = paste0(meta_dat_dia$country_iso3, ' (', meta_dat_dia$study_id, ') ', 
+                                    meta_dat_dia$self_or_child), 
+                   method = 'GLMM', common = FALSE, prediction = TRUE)
+
+# Severe diarrhea or cholera
+meta_dat_sev <- meta_dat %>% filter(case_cat == 'Severe diarrhea or cholera')
+ma_sev <- metaprop(n_did, n_did_survey, data = meta_dat_sev, 
+                   studlab = paste0(meta_dat_sev$country_iso3, ' (', meta_dat_sev$study_id, ') ', 
+                                    meta_dat_sev$self_or_child), 
+                   method = 'GLMM', common = FALSE, prediction = TRUE)
+
+# Gastroenteritis or other etiologies
+meta_dat_geo <- meta_dat %>% filter(case_cat == 'Gastroenteritis or other etiologies')
+ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo, 
+                   studlab = paste0(meta_dat_geo$country_iso3, ' (', meta_dat_geo$study_id, ') ', 
+                                    meta_dat_geo$self_or_child), 
+                   method = 'GLMM', common = FALSE, prediction = TRUE)
+
+```
+
+<br>
+
+### Figure S11. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for general diarrhea
+
+```{r figS11, fig.width = 8, fig.height = 26}
+
+ma_dia
+
+forest(ma_dia)
+```
+
+<br>
+
+### Figure S12. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for severe diarrhea or cholera
+
+```{r figS12, fig.width = 8, fig.height = 5.25}
+
+ma_sev
+
+forest(ma_sev)
+```
+
+<br>
+
+### Figure S13. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for gastroenteritis or other etiologist
+
+```{r figS13, fig.width = 8, fig.height = 3.5}
+
+ma_geo
+
+forest(ma_geo)
 ```
