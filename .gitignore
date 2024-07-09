@@ -4,6 +4,9 @@ code/PRISMA-20231218.png
 code/figures/
 code/main.html
 data/shapefiles/
+code/tables/
+data/extracted_data/wb_income_class.xlsx
+data/extracted_data/wb_income_class_hist.xlsx
 
 # Git Config File
 .gitconfig
