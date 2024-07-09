@@ -1,6 +1,6 @@
 ---
 title: "Care seeking for diarrheal illnes: a systematic review and meta-analysis"
-author: "Kirsten E. Wiens, Marissa Miller, Daniel P. Costello, Ashlynn Solomon, Skye Hilbert, ..., Elizabeth C. Lee, Andrew S. Azman"
+author: "Kirsten E. Wiens, Marissa H. Miller, Daniel J. Costello, Ashlynn P. Solomon, Skye M. Hilbert, Elizabeth C. Lee, Andrew S. Azman"
 output: 
   html_document:
     toc: true
@@ -210,7 +210,7 @@ sr_dat_sources <- df %>%
 
 ## Study characteristics
 
-### Fig 1. PRISMA diagram
+### Fig 1. PRISMA flow diagram
 
 ![PRISMA diagram.](PRISMA-20231218.png)
 
@@ -290,15 +290,6 @@ cowplot::plot_grid(figS1[[1]], figS1[[2]], figS1[[3]], figS1[[4]],
 #   ungroup() %>%
 #   arrange(observations) %>%
 #   pretty_table()
-
-# # numbers for Haiti
-# data_loc %>%
-#   filter(country_iso3 == 'HTI') %>%
-#   group_by(variable) %>%
-#   # count observations by admin level
-#   summarize(observations = sum(observations)) %>%
-#   ungroup() %>%
-#   pretty_table()
 ```
 
 <br>
@@ -356,20 +347,11 @@ cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
 #   summarize(observations = sum(observations)) %>%
 #   ungroup() %>%
 #   pretty_table()
-
-# # numbers for Haiti
-# coverage_time %>%
-#   filter(country_iso3 == 'HTI') %>%
-#   group_by(variable) %>%
-#   # count observations by time period
-#   summarize(observations = sum(observations)) %>%
-#   ungroup() %>%
-#   pretty_table()
 ```
 
 <br>
 
-### Table 1. Study observation characteristics
+### Table 1. Study characteristics
 
 ```{r table1}
 
@@ -439,7 +421,7 @@ df_hosp_lmic <- df_hosp %>%
 
 <br>
 
-### Figure S3. Proportion seeking care at a hospital or clinic by region
+### Figure S3. Proportion that sought care at a hospital or clinic by region
 
 ```{r}
 fS3a <- plot_seekprop(df_hosp, 'region', num_colors=10) +
@@ -468,7 +450,7 @@ cowplot::plot_grid(fS3a, fS3b, labels = c('A', 'B'),
 
 <br>
 
-### Figure S4. Proportion seeking care at a hospital or clinic by income group
+### Figure S4. Proportion that sought care at a hospital or clinic by income group
 
 ```{r}
 fS4a <- plot_seekprop(df_hosp, 'income_group', num_colors=4) +
@@ -497,7 +479,7 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 
 <br>
 
-### Figure 2. Proportion seeking care at a hospital or clinic by observation characteristics
+### Figure 2. Proportion that sought care at a hospital or clinic in LMICs by observation characteristics
 
 ```{r}
 f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
@@ -563,7 +545,7 @@ cowplot::plot_grid(f2a, f2b, f2c, f2d,
 
 <br>
 
-### Figure S5. Proportion seeking care by study quality
+### Figure S5. Proportion that sought care by study quality in LMICs
 
 Overall quality score is whether data is internally consistent + whether sample size was justified + whether the non-response was reported.
 
@@ -593,7 +575,7 @@ cowplot::plot_grid(s5a, s5b, s5c, s5d,
 
 <br>
 
-### Figure 3. Relationship between care seeking and proportion under 5 years
+### Figure 3. Relationship between age and care seeking at hospitals or clinics in LMICs
 
 ```{r}
 # set variables to keep
@@ -687,7 +669,7 @@ cowplot::plot_grid(f3a, f3b, f3c, f3d,
 
 <br>
 
-### Figure 4. Proportion seeking care by source in LMICs
+### Figure 4. Proportion that sought care by source in LMICs
 
 ```{r}
 
@@ -732,11 +714,11 @@ cowplot::plot_grid(f4a, f4b,
                    nrow = 2)
 ```
 
-### Proportion seeking care by source and study characteristic {.tabset}
+### Proportion that sought care by source and observation characteristic {.tabset}
 
 #### Figure S6. Income group
 
-```{r figS6, fig.width = 10, fig.height = 9}
+```{r figS6, fig.width = 9, fig.height = 7}
 fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -748,7 +730,7 @@ fS6 + facet_wrap('income_group', ncol = 1)
 
 #### Figure S7. Case definition
 
-```{r figS7, fig.width = 10, fig.height = 9}
+```{r figS7, fig.width = 9, fig.height = 7}
 fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -760,7 +742,7 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 
 #### Figure S8. Self or child
 
-```{r figS8, fig.width = 10, fig.height = 9}
+```{r figS8, fig.width = 9, fig.height = 7}
 fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
   theme_dark() +
@@ -879,7 +861,7 @@ ma_unadj_would <- metaprop(n_would, n_would_survey, data = meta_dat_would,
                            method = 'GLMM', common = FALSE, prediction = TRUE)
 ```
 
-### Figure S9. Forest plot for unadjusted meta-analysis of whether people sought care at a hospital or clinic for an actual diarrhea episode
+### Figure S9. Forest plot of care seeking at a hospital or clinic in LMICs
 
 ```{r figS9, fig.width = 10, fig.height = 31}
 
@@ -888,7 +870,7 @@ ma_unadj
 forest(ma_unadj)
 ```
 
-### Figure S10. Forest plot for unadjusted meta-analysis of whether people would seek care at a hospital or clinic for a hypothetical diarrhea episode
+### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
 ```{r figS10, fig.width = 10, fig.height = 7}
 
@@ -949,7 +931,7 @@ mod_ests <- rbind(mod_ests,
                   )
 ```
 
-```{r run univariate meta-regressions}
+```{r run univariate meta-regressions, message = TRUE}
 
 # https://metafor-project.org/doku.php/tips:comp_two_independent_estimates
 
@@ -1239,7 +1221,7 @@ mr_fit <- rma(measure = 'PLO',
 ```{r run multivariate meta-analysis}
 
 # fit model
-mr_fit <- rma(measure = 'PLO',
+mv_fit <- rma(measure = 'PLO',
               xi = n_did, ni = n_did_survey,
               method = 'REML', 
               mods = ~ case_cat + pop_cat, 
@@ -1250,9 +1232,9 @@ mr_fit <- rma(measure = 'PLO',
   mod_ests <- rbind(mod_ests,
                    data.frame(run_id = 'all-mod2',
                               mod_id = 'alpha',
-                              mean = inv.logit(mr_fit$beta[1,1]),
-                              lower = inv.logit(mr_fit$ci.lb[1]),
-                              upper = inv.logit(mr_fit$ci.ub[1]),
+                              mean = inv.logit(mv_fit$beta[1,1]),
+                              lower = inv.logit(mv_fit$ci.lb[1]),
+                              upper = inv.logit(mv_fit$ci.ub[1]),
                               row.names = NULL
                               )
                    )
@@ -1262,10 +1244,10 @@ mr_fit <- rma(measure = 'PLO',
       mod_ests <- rbind(mod_ests,
                        data.frame(
                          run_id = 'all-mod2',
-                         mod_id = rownames(mr_fit$beta)[[c]],
-                         mean = exp(mr_fit$beta[c]),
-                         lower = exp(mr_fit$ci.lb[c]),
-                         upper = exp(mr_fit$ci.ub[c]),
+                         mod_id = rownames(mv_fit$beta)[[c]],
+                         mean = exp(mv_fit$beta[c]),
+                         lower = exp(mv_fit$ci.lb[c]),
+                         upper = exp(mv_fit$ci.ub[c]),
                          row.names = NULL
                        )
       )
@@ -1380,11 +1362,7 @@ mr_fit <- rma(measure = 'PLO',
 
 ```
 
-<br>
-
-### Table S1. Estimated proportion that seek care
-
-```{r tabS4}
+```{r}
 # mean adjusted proportion seeking care
 pr2 <- mod_ests %>%
   filter(run_id %in% c('all-mod1', 'all-mod1-would'), 
@@ -1402,20 +1380,20 @@ tabS1 <- data.frame('Version' = c('Fit - did you',
                     'Proportion' = paste0(pr2[,2],' (',pr2[,1],' - ',pr2[,3],')'))
 
 names(tabS1) <- c('Version', 'Proportion (%)')
-pretty_table(tabS1)
-
-tabS1 %>%
-  flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS1.docx'))
+# pretty_table(tabS1)
+# 
+# tabS1 %>%
+#   flextable() %>%
+#   save_as_docx(path = here::here('code/tables/tableS1.docx'))
 ```
 
 <br>
 
 ## Factors associated with variation in care seeking at hospitals or clinics
 
-### Table S2. Univariate analyses - did you
+### Table S1. Univariate analyses of factors associated with variation in care seeking
 
-Odds of actually seeking care for diarrhea for each indicated variable, not adjusting for any other variables.
+Odds of seeking care for diarrhea associated with each indicated category compared to the reference group, not adjusting for any other variables.
 
 ```{r univariate odds ratios did}
 mod_ests_uni <- mod_ests %>%
@@ -1434,7 +1412,7 @@ mod_ests_uni_did %>%
 
 <br>
 
-### Table S3. Sub-analyses by age: studies that are either only adults or only children
+### Table 2-1. Sub-analyses by age: studies that are either only adults or only children
 
 Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
 
@@ -1454,12 +1432,12 @@ pretty_table(mod_ests_age1)
 
 mod_ests_age1 %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS3.docx'))
+  save_as_docx(path = here::here('code/tables/table2-1.docx'))
 ```
 
 <br>
 
-### Table S4. Sub-analyses by age: studies with care seeking stratified by age
+### Table 2-2. Sub-analyses by age: studies with care seeking stratified by age
 
 Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
 
@@ -1472,42 +1450,12 @@ pretty_table(mod_ests_age2)
 
 mod_ests_age2 %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS4.docx'))
+  save_as_docx(path = here::here('code/tables/table2-2.docx'))
 ```
 
 <br>
 
-### Table S5. Tests for potential confounding {.tabset}
-
-In analyses below, the dependent variable is listed in the header.
-
-#### self_or_child (self/adult vs child)
-
-```{r self_or_child confounding}
-mod_ests_soc <- mod_ests %>%
-    filter(grepl('all-self_or_child', run_id) & mod_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_soc)
-```
-
-<br>
-
-#### outbreak_desc
-
-```{r outbreak_desc confounding}
-mod_ests_out <- mod_ests %>%
-    filter(grepl('all-outbreak_desc', run_id) & mod_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_out)
-```
-
-<br>
-
-#### case_cat
-
-##### Severe diarrhea or cholera
+### Table S2. Tests for potential confounding with severe diarrhea case definition
 
 ```{r vc_severe confounding}
 mod_ests_vc <- mod_ests %>%
@@ -1518,24 +1466,12 @@ pretty_table(mod_ests_vc)
 
 mod_ests_vc %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS5.docx'))
+  save_as_docx(path = here::here('code/tables/tableS2.docx'))
 ```
 
 <br>
 
-##### Gastroenteritis or non-V cholerae
-
-```{r ge_nonvc confounding}
-mod_ests_ge <- mod_ests %>%
-  filter(grepl('all-ge_nonvc', run_id) & mod_id != 'alpha') %>%
-  or_table()
-
-pretty_table(mod_ests_ge)
-```
-
-<br>
-
-### Table S6. Sub-analyses
+### Table S3. Sub-analyses of study describing an outbreak and recall period
 
 #### Vc or severe diarrhea
 
@@ -1550,7 +1486,7 @@ pretty_table(vc_coef)
 
 vc_coef %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS6-1.docx'))
+  save_as_docx(path = here::here('code/tables/tableS3-1.docx'))
 ```
 
 <br>
@@ -1568,26 +1504,29 @@ pretty_table(dia_coef)
 
 dia_coef %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS6-2.docx'))
+  save_as_docx(path = here::here('code/tables/tableS3-2.docx'))
 ```
 
 <br>
 
-### Table 2. Factors associated with variation in care seeking rates
+### Table 3. Factors associated with variation in care seeking rates
 
 Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
 
 ```{r coefs did}
+# print fit results
+mv_fit
+
 # pull mean coefficients
-c2 <- mod_ests %>%
+c3 <- mod_ests %>%
   filter(run_id %in% c('all-mod2'), mod_id != 'alpha')
 
-or_table(c2) %>%
+or_table(c3) %>%
   pretty_table(title = 'Model including study population and case definition')
 
-or_table(c2) %>%
+or_table(c3) %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/table2.docx'))
+  save_as_docx(path = here::here('code/tables/table3.docx'))
 ```
 
 <br>
@@ -1619,7 +1558,7 @@ ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo,
 
 <br>
 
-### Figure S11. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for general diarrhea
+### Figure S11. Forest plot of care seeking for general diarrhea in LMICs
 
 ```{r figS11, fig.width = 8, fig.height = 26}
 
@@ -1630,7 +1569,7 @@ forest(ma_dia)
 
 <br>
 
-### Figure S12. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for severe diarrhea or cholera
+### Figure S12. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
 
 ```{r figS12, fig.width = 8, fig.height = 5.25}
 
@@ -1641,7 +1580,7 @@ forest(ma_sev)
 
 <br>
 
-### Figure S13. Forest plot for stratified meta-analysis of whether people sought care at a hospital or clinic for gastroenteritis or other etiologist
+### Figure S13. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
 
 ```{r figS13, fig.width = 8, fig.height = 3.5}
 
