@@ -417,6 +417,10 @@ df_hosp <- sr_dat %>%
 # just studies in LMIC
 df_hosp_lmic <- df_hosp %>% 
   filter(hic == 0)
+
+# just studies in HIC
+df_hosp_hic <- df_hosp %>% 
+  filter(hic == 1)
 ```
 
 <br>
@@ -803,7 +807,7 @@ We build generalized linear models with a study-level random intercept using the
 
 *NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 146 unique observations corresponding to 114 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
-```{r prep data for meta-analysis}
+```{r prep data for LMIC meta-analysis}
 # subset input data to LMICs
 meta_dat <- sr_dat %>% filter(hic == 0)
 case_strat <- 'all'
@@ -844,11 +848,47 @@ cov_cats <- sr_dat %>%
 #   pretty_table()
 ```
 
+```{r prep data for HIC meta-analysis}
+# subset input data to LMICs
+meta_dat_hic <- sr_dat %>% filter(hic == 1)
+case_strat <- 'all'
+
+# add random effect label by observation
+meta_dat_hic <- meta_dat_hic %>% 
+  mutate(study_lab = 1:nrow(meta_dat_hic)) %>%
+  arrange(propseek)
+
+# create a template table of all covariates and reference categories (for use when building tables later)
+cov_cats_hic <- sr_dat %>% 
+  filter(hic == 1) %>%
+  select_at(covs) %>%
+  mutate(mult_choice = as.character(mult_choice),
+         outbreak_desc = as.character(outbreak_desc)) %>%
+  pivot_longer(covs, names_to = 'Variable', values_to = 'Category') %>%
+  unique() %>% 
+  arrange(Variable, Category) %>%
+  mutate(Reference = ifelse(duplicated(Variable), 0, 1))
+
+# sr_dat %>% filter(hic == 1) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
+# 
+# sr_dat %>% filter(hic == 1) %>%
+#   summarize(`Weighted mean` = weighted.mean(propseek, n_did_survey),
+#             `Standard deviation` = sd(propseek)) %>%
+#   ungroup %>%
+#   pretty_table()
+```
+
 <br>
 
 ```{r run unadjusted meta-analyses}
 
-# did you seek care
+# did you seek care in LMICs
 ma_unadj <- metaprop(n_did, n_did_survey, data = meta_dat, 
                      studlab = paste0(meta_dat$country_iso3, ' (', meta_dat$study_id, ') ', 
                                       meta_dat$self_or_child, ', ', meta_dat$case_cat), 
@@ -859,6 +899,12 @@ ma_unadj_would <- metaprop(n_would, n_would_survey, data = meta_dat_would,
                            studlab = paste0(meta_dat_would$country_iso3, ' (', meta_dat_would$study_id, ') ', 
                                             meta_dat_would$self_or_child, ', ', meta_dat_would$case_cat), 
                            method = 'GLMM', common = FALSE, prediction = TRUE)
+
+# did you seek care in HICs
+ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic, 
+                         studlab = paste0(meta_dat_hic$country_iso3, ' (', meta_dat_hic$study_id, ') ', 
+                                          meta_dat_hic$self_or_child, ', ', meta_dat_hic$case_cat), 
+                         method = 'GLMM', common = FALSE, prediction = TRUE)
 ```
 
 ### Figure S9. Forest plot of care seeking at a hospital or clinic in LMICs
@@ -870,6 +916,7 @@ ma_unadj
 forest(ma_unadj)
 ```
 
+
 ### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
 ```{r figS10, fig.width = 10, fig.height = 7}
@@ -877,6 +924,15 @@ forest(ma_unadj)
 ma_unadj_would
 
 forest(ma_unadj_would)
+```
+
+### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
+
+```{r figS11, fig.width = 10, fig.height = 8}
+
+ma_hic_unadj
+
+forest(ma_hic_unadj)
 ```
 
 ```{r data frame to save model results}
@@ -931,7 +987,7 @@ mod_ests <- rbind(mod_ests,
                   )
 ```
 
-```{r run univariate meta-regressions, message = TRUE}
+```{r run univariate meta-regressions LMIC, message = TRUE}
 
 # https://metafor-project.org/doku.php/tips:comp_two_independent_estimates
 
@@ -973,7 +1029,57 @@ for (i in 1:length(covs)) {
 }
 ```
 
-```{r test for confounding with self_or_child}
+```{r run univariate meta-regressions HIC, message = TRUE}
+
+mod_ests_hic <- data.frame(run_id = NA,
+                       mod_id = NA,
+                       mean = NA,
+                       lower = NA, 
+                       upper = NA, 
+                       row.names = NULL)
+mod_ests_hic <- na.omit(mod_ests_hic)
+
+# https://metafor-project.org/doku.php/tips:comp_two_independent_estimates
+
+# loop over covariates
+for (i in 1:length(covs)) {
+
+  mr_fit_hic <- rma(measure = 'PLO',
+                xi = n_did, ni = n_did_survey,
+                method = 'REML', 
+                mods = formula(paste0('~', covs[[i]])), 
+                random = formula(paste0('~', covs[[i]], '|study_lab')),
+                data = meta_dat_hic)
+  
+  # save intercept results
+  mod_ests_hic <- rbind(mod_ests_hic,
+                   data.frame(run_id = paste0('all-uni-', covs[[i]]),
+                              mod_id = 'alpha',
+                              mean = inv.logit(mr_fit_hic$beta[1,1]),
+                              lower = inv.logit(mr_fit_hic$ci.lb[1]),
+                              upper = inv.logit(mr_fit_hic$ci.ub[1]),
+                              row.names = NULL
+                              )
+                   )
+  
+  # save beta coefficients
+  for (c in 2:length(rownames(mr_fit_hic$beta))) {
+      mod_ests_hic <- rbind(mod_ests_hic,
+                       data.frame(
+                         run_id = paste0('all-uni-', covs[[i]]),
+                         mod_id = rownames(mr_fit_hic$beta)[[c]],
+                         mean = exp(mr_fit_hic$beta[c]),
+                         lower = exp(mr_fit_hic$ci.lb[c]),
+                         upper = exp(mr_fit_hic$ci.ub[c]),
+                         row.names = NULL
+                       )
+      )
+    }
+  
+}
+```
+
+```{r test for confounding with self_or_child LMIC}
 
 # data to just adult vs. child
 meta_dat_ac <- meta_dat %>% filter(self_or_child != 'Other')
@@ -1016,7 +1122,7 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_cho
 }
 ```
 
-```{r test for confounding with outbreak_desc}
+```{r test for confounding with outbreak_desc LMIC}
 
 # loop over covariates
 for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
@@ -1057,7 +1163,7 @@ for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_cho
 }
 ```
 
-```{r test for confounding with case_cat}
+```{r test for confounding with case_cat LMIC}
 
 # data to just look at either diarrhea and 1) vc or severe, or 2) gastro or other
 meta_dat_vc <- meta_dat %>% filter(case_cat != 'Gastroenteritis or other etiologies')
@@ -1140,7 +1246,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mul
 }
 ```
 
-```{r run cholera model to test effect of outbreaks}
+```{r run cholera model to test effect of outbreaks LMIC}
 
 # subset to case_strat
 meta_dat_vconly <- meta_dat %>% filter(case_cat == 'Severe diarrhea or cholera')
@@ -1179,7 +1285,7 @@ mr_fit <- rma(measure = 'PLO',
     }
 ```
 
-```{r run diarrhea model to test effect of recall period}
+```{r run diarrhea model to test effect of recall period LMIC}
 
 # subset to case_strat
 meta_dat_dia <- meta_dat %>% filter(case_cat == 'Diarrhea')
@@ -1218,7 +1324,7 @@ mr_fit <- rma(measure = 'PLO',
     }
 ```
 
-```{r run multivariate meta-analysis}
+```{r run multivariate meta-analysis LMIC}
 
 # fit model
 mv_fit <- rma(measure = 'PLO',
@@ -1255,7 +1361,7 @@ mv_fit <- rma(measure = 'PLO',
 
 ```
 
-```{r sub-analysis by age 1}
+```{r sub-analysis by age 1 LMIC}
 # subset data
 #NB: still don't find significant differences when subset by case definition, although the etiologies approach significance
 df_meta1 <- df_age %>% 
@@ -1300,7 +1406,7 @@ mr_fit <- rma(measure = 'PLO',
 
 ```
 
-```{r sub-analysis by age 2}
+```{r sub-analysis by age 2 LMIC}
 # prep data
 df_age_strat <- df_age %>%
   filter(strat_age == 1) %>%
@@ -1391,11 +1497,11 @@ names(tabS1) <- c('Version', 'Proportion (%)')
 
 ## Factors associated with variation in care seeking at hospitals or clinics
 
-### Table S1. Univariate analyses of factors associated with variation in care seeking
+### Table S2. Univariate analyses of factors associated with variation in care seeking in LMICs
 
 Odds of seeking care for diarrhea associated with each indicated category compared to the reference group, not adjusting for any other variables.
 
-```{r univariate odds ratios did}
+```{r univariate odds ratios did LMIC}
 mod_ests_uni <- mod_ests %>%
     filter(grepl('all-uni', run_id) & mod_id != 'alpha') 
 
@@ -1408,6 +1514,18 @@ pretty_table(mod_ests_uni_did)
 mod_ests_uni_did %>%
   flextable() %>%
   save_as_docx(path = here::here('code/tables/tableS2.docx'))
+```
+
+```{r univariate odds ratios did HIC}
+mod_ests_uni_hic <- mod_ests_hic %>%
+  filter(grepl('all-uni', run_id) & mod_id != 'alpha') %>%
+  or_table(cov_cats_df = cov_cats_hic)
+
+# pretty_table(mod_ests_uni_hic)
+
+# mod_ests_uni_hic %>%
+#   flextable() %>%
+#   save_as_docx(path = here::here('code/tables/tableS3.docx'))
 ```
 
 <br>
@@ -1455,7 +1573,7 @@ mod_ests_age2 %>%
 
 <br>
 
-### Table S2. Tests for potential confounding with severe diarrhea case definition
+### Table S3. Tests for potential confounding with severe diarrhea case definition
 
 ```{r vc_severe confounding}
 mod_ests_vc <- mod_ests %>%
@@ -1466,12 +1584,12 @@ pretty_table(mod_ests_vc)
 
 mod_ests_vc %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS2.docx'))
+  save_as_docx(path = here::here('code/tables/tableS3.docx'))
 ```
 
 <br>
 
-### Table S3. Sub-analyses of study describing an outbreak and recall period
+### Table S4. Sub-analyses of study describing an outbreak and recall period
 
 #### Vc or severe diarrhea
 
@@ -1486,7 +1604,7 @@ pretty_table(vc_coef)
 
 vc_coef %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS3-1.docx'))
+  save_as_docx(path = here::here('code/tables/tableS4-1.docx'))
 ```
 
 <br>
@@ -1504,7 +1622,7 @@ pretty_table(dia_coef)
 
 dia_coef %>%
   flextable() %>%
-  save_as_docx(path = here::here('code/tables/tableS3-2.docx'))
+  save_as_docx(path = here::here('code/tables/tableS4-2.docx'))
 ```
 
 <br>
@@ -1558,9 +1676,9 @@ ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo,
 
 <br>
 
-### Figure S11. Forest plot of care seeking for general diarrhea in LMICs
+### Figure S12. Forest plot of care seeking for general diarrhea in LMICs
 
-```{r figS11, fig.width = 8, fig.height = 26}
+```{r figS12, fig.width = 8, fig.height = 26}
 
 ma_dia
 
@@ -1569,9 +1687,9 @@ forest(ma_dia)
 
 <br>
 
-### Figure S12. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
+### Figure S13. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
 
-```{r figS12, fig.width = 8, fig.height = 5.25}
+```{r figS13, fig.width = 8, fig.height = 5.25}
 
 ma_sev
 
@@ -1580,9 +1698,9 @@ forest(ma_sev)
 
 <br>
 
-### Figure S13. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
+### Figure S14. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
 
-```{r figS13, fig.width = 8, fig.height = 3.5}
+```{r figS14, fig.width = 8, fig.height = 3.5}
 
 ma_geo
 
