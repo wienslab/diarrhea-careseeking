@@ -340,13 +340,13 @@ cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
                    labels = c('A', 'B', 'C', 'D'),
                    ncol = 1)
 
-# # number at each level
-# coverage_time %>%
-#   group_by(variable) %>%
-#   # count observations by time period
-#   summarize(observations = sum(observations)) %>%
-#   ungroup() %>%
-#   pretty_table()
+# number at each level
+coverage_time %>%
+  group_by(variable) %>%
+  # count observations by time period
+  summarize(observations = sum(observations)) %>%
+  ungroup() %>%
+  pretty_table()
 ```
 
 <br>
@@ -623,9 +623,9 @@ f3a <- ggplot(df_cor, aes(y=propseek, x = prop_five)) +
   theme_bw() +
   theme(legend.position = 'none') +
   annotate('text', x = 0.5, y = 1.1, color = 'darkgreen',
-           label = paste0('rho = ', signif(ct$estimate, 2), 
-                          ' (95% CI ', signif(ct$conf.int[[1]],2), 
-                          ' to ', signif(ct$conf.int[[2]],2), ')')) +
+           label = paste0('rho = ', round(ct$estimate, 2), 
+                          ' (95% CI ', round(ct$conf.int[[1]],2), 
+                          ' to ', round(ct$conf.int[[2]],2), ')')) +
   geom_smooth(method = 'lm',  color='purple')+
   labs(x = 'Proportion under 5', y = 'Proportion seeking care',
        size = NULL, shape = NULL)
@@ -654,15 +654,15 @@ f3c <- plot_seekprop(df_age %>%
 # by case definition
 f3d <- f3c + facet_wrap('case_cat')
 
-# df_age %>%
-#   filter(prop_five == 0 | prop_five == 1) %>%
-#   group_by(prop_five) %>%
-#   summarize(median = median(propseek),
-#             N = length(propseek),
-#             IQR_L = quantile(propseek, 0.25),
-#             IQR_R = quantile(propseek, 0.75)) %>%
-#   ungroup %>%
-#   pretty_table()
+df_age %>%
+  filter(prop_five == 0 | prop_five == 1) %>%
+  group_by(prop_five) %>%
+  summarize(median = median(propseek),
+            N = length(propseek),
+            IQR_L = quantile(propseek, 0.25),
+            IQR_R = quantile(propseek, 0.75)) %>%
+  ungroup %>%
+  pretty_table()
 ```
 
 ```{r fig3, fig.width = 9, fig.height = 7}
