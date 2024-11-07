@@ -1,6 +1,6 @@
 ---
 title: "Care seeking for diarrheal illnes: a systematic review and meta-analysis"
-author: "Kirsten E. Wiens, Marissa H. Miller, Daniel J. Costello, Ashlynn P. Solomon, Skye M. Hilbert, Elizabeth C. Lee, Andrew S. Azman"
+author: "Kirsten E. Wiens, Marissa H. Miller, Daniel J. Costello, Ashlynn P. Solomon, Skye M. Hilbert, Andrea G. Shipper, Elizabeth C. Lee, Andrew S. Azman"
 output: 
   html_document:
     toc: true
@@ -916,6 +916,7 @@ ma_unadj
 forest(ma_unadj)
 ```
 
+<br>
 
 ### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
@@ -926,9 +927,11 @@ ma_unadj_would
 forest(ma_unadj_would)
 ```
 
+<br>
+
 ### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
 
-```{r figS11, fig.width = 10, fig.height = 8}
+```{r figS11, fig.width = 10, fig.height = 7}
 
 ma_hic_unadj
 
@@ -1346,7 +1349,7 @@ mv_fit <- rma(measure = 'PLO',
                    )
   
   # save beta coefficients
-  for (c in 2:length(rownames(mr_fit$beta))) {
+  for (c in 2:length(rownames(mv_fit$beta))) {
       mod_ests <- rbind(mod_ests,
                        data.frame(
                          run_id = 'all-mod2',
