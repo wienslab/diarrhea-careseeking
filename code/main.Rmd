@@ -77,17 +77,15 @@ df <- df %>%
   # set "other" to "any care" for timing (based on descriptions in notes)
   mutate(time_care = ifelse(time_care == 'Other (write in notes)', 'Any care', time_care)) %>%
   # clean up self or child
-  mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Other', self_or_child)) %>%
+  mutate(self_or_child = ifelse(self_or_child == 'Other (describe in notes)', 'Combination', self_or_child)) %>%
   # create standard case definitions
   mutate(case_cat = ifelse(case_cat %in% c('Giardiasis', 'Other (list etiologies in notes)'), 'Gastroenteritis or other etiologies', 
                            ifelse(case_cat %in% c('No explicit diarrhea definition', 'Diarrhea (3+ loose/liquid stools)'), 'Diarrhea',
                                   ifelse(case_cat %in% c('Diarrhea death', 'Severe diarrhea (danger signs, dehydration, hospitalization, 1+ week)', 
                                                          'Cholera (watery diarrhea)', 'Cholera death'), 'Severe diarrhea or cholera',
                                                                 'Gastroenteritis or other etiologies')))) %>%
-  # create standard population category
-  mutate(pop_cat = ifelse(pop_cat %in% c('Child with malnutrition', 'Orphan', 'Relative/Caregiver (of adult)',
-                                         'Street dweller', 'University student', 'Other',
-                                         'Resident', 'Resident with telephone/email access'), 'Other resident', pop_cat)) %>%
+  # create variable for whether data collection was done at a clinic vs. in the community
+  mutate(pop_clinic = ifelse(pop_cat %in% c('Caregiver of patient at health facility', 'Patient at health facility'), 1, 0)) %>%
   # clean up study quality assessments
   mutate(int_consistent = ifelse(int_consistent == "N/a" | int_consistent == "n/a", 
                                  NA, int_consistent),
@@ -110,7 +108,7 @@ df <- df %>%
 # create primary dataset for meta-analysis: whether people DID seek care at a hospital or clinic
 
 # set covariates to examine
-covs <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
+covs <- c('time_care', 'recall_time', 'mult_choice', 'self_or_child',
           'case_cat', 'outbreak_desc', 'location_desc')
 
 # proportion seeking care for meta-analysis primary dataset
@@ -119,7 +117,7 @@ sr_dat <- df %>%
   # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
-  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 'pop_clinic',
                 'ic_combined', 'sample_justified', 'nonresponse', 'quality_score', covs)) %>%
   summarize(n_did_survey = n_did_survey,
             n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
@@ -132,13 +130,14 @@ sr_dat <- df %>%
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
                                        'Urban and non-urban'))) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
-  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 'pop_clinic',
                 'ic_combined', 'sample_justified', 'nonresponse', 'quality_score', covs)) %>%
   summarize(n_did_survey = sum(n_did_survey), 
             n_did = sum(n_did)) %>%
   ungroup() %>%
   unique() %>%
   mutate(propseek = n_did/n_did_survey)
+  
 ```
 
 ```{r data for would analysis}
@@ -149,6 +148,8 @@ sr_dat <- df %>%
 sr_dat_would <- df_would %>%
   # restrict to LMICs
   filter(hic == 0) %>%
+  # restrict to non-clinic-based surveys
+  filter(pop_clinic == 0) %>%
   # filter to hospital/clinic (not private)
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic')) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
@@ -162,8 +163,7 @@ sr_dat_would <- df_would %>%
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
-                                       'Urban and non-urban')),
-         pop_cat = ifelse(pop_cat %in% c('Internally Displaced Person', 'Patient at health facility'), 'Other resident', pop_cat)) %>%
+                                       'Urban and non-urban'))) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', covs)) %>%
   summarize(n_would_survey = sum(n_would_survey), 
@@ -181,6 +181,8 @@ sr_dat_would <- df_would %>%
 sr_dat_sources <- df %>%
   # restrict to LMICs
   filter(hic == 0) %>%
+  # restrict to non-clinic-based surveys
+  filter(pop_clinic == 0) %>%
   # group public hospital/clinic with general hospital/clinic for consistency with rest of paper
   mutate(location_type = ifelse(location_type == 'Public Hospital/Clinic', 'Hospital/Clinic', location_type)) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
@@ -194,8 +196,7 @@ sr_dat_sources <- df %>%
          recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
          location_desc = ifelse(location_desc == 'Urban', 'Urban',
                                 ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
-                                       'Urban and non-urban')),
-         pop_cat = ifelse(pop_cat %in% c('Internally Displaced Person', 'Patient at health facility'), 'Other resident', pop_cat)) %>%
+                                       'Urban and non-urban'))) %>%
   # aggregate care seeking numbers to study_id and covariate categories ("observations")
   group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
   summarize(n_did_survey = sum(n_did_survey), 
@@ -362,9 +363,10 @@ schar <- df %>%
                                    ifelse(recall_time == 14 | recall_time <= 30, '14-30 days',
                                           ifelse(recall_time > 30, '42-365 days', 'Unknown'))),
          mult_choice = ifelse(mult_choice == 1, 'Yes', 'No'),
-         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         pop_clinic = ifelse(pop_clinic == 1, 'Yes', 'No')) %>%
   # sum up number of tests and sample sizes by observation
-  dplyr::select_at(c('study_id', 'country_iso3', 'income_group', covs)) %>%
+  dplyr::select_at(c('study_id', 'country_iso3', 'income_group', 'pop_clinic', covs)) %>%
   unique() %>%
   dplyr::select(-study_id, -country_iso3) 
 
@@ -383,17 +385,17 @@ schar <- df %>%
 schar %>%
   summarize_cats() %>%
   arrange(desc(variable), desc(Percent)) %>%
-  mutate(variable = ifelse(variable == 'Pop cat', 'Study population',
+  mutate(variable = ifelse(variable == 'Pop clinic', 'Clinic-based surveillance',
                            ifelse(variable == 'Case cat', 'Case definition',
-                                  ifelse(variable == 'Outbreak desc', 'Outbreak described', variable)))) %>%
+                                  ifelse(variable == 'Outbreak desc', 'During/after diarrhea outbreak', variable)))) %>%
   pretty_table()
 
 schar %>%
   summarize_cats() %>%
   arrange(desc(variable), desc(Percent)) %>%
-  mutate(variable = ifelse(variable == 'Pop cat', 'Study population',
+  mutate(variable = ifelse(variable == 'Pop clinic', 'Clinic-based surveillance',
                            ifelse(variable == 'Case cat', 'Case definition',
-                                  ifelse(variable == 'Outbreak desc', 'Outbreak described', variable)))) %>%
+                                  ifelse(variable == 'Outbreak desc', 'During/after diarrhea outbreak', variable)))) %>%
   flextable() %>%
   save_as_docx(path = here::here('code/tables/table1.docx'))
 ```
@@ -408,17 +410,36 @@ schar %>%
 
 ```{r}
 # all studies
+df_hosp_all <- sr_dat %>%
+  # format variables
+  mutate(region = ifelse(region %in% c('Eastern Africa', 'Middle Africa', 'Southern Africa', 'Western Africa'), 
+                         'sub-Saharan Africa', region),
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         pop_clinic = ifelse(pop_clinic == 1, 'Yes', 'No'))
+
+# all non-clinic-based studies
 df_hosp <- sr_dat %>%
   # format variables
   mutate(region = ifelse(region %in% c('Eastern Africa', 'Middle Africa', 'Southern Africa', 'Western Africa'), 
                          'sub-Saharan Africa', region),
-         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'))
+         outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No'),
+         pop_clinic = ifelse(pop_clinic == 1, 'Yes', 'No')) %>%
+  # remove clinic-based studies
+  filter(pop_clinic == 'No')
 
 # just studies in LMIC
+df_hosp_all_lmic <- df_hosp_all %>% 
+  filter(hic == 0)
+
+# just non-clinic-based studies in LMIC
 df_hosp_lmic <- df_hosp %>% 
   filter(hic == 0)
 
 # just studies in HIC
+df_hosp_all_hic <- df_hosp_all %>% 
+  filter(hic == 1)
+
+# just non-clinic-based studies in HIC
 df_hosp_hic <- df_hosp %>% 
   filter(hic == 1)
 ```
@@ -486,8 +507,8 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 ### Figure 2. Proportion that sought care at a hospital or clinic in LMICs by observation characteristics
 
 ```{r}
-f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
-  ggtitle('Diarrhea case definition')
+f2a <- plot_seekprop(df_hosp_all_lmic, 'pop_clinic', num_colors=2) +
+  ggtitle('Clinic-based surveillance')
 
 # df_hosp_lmic %>%
 #   group_by(case_cat) %>%
@@ -500,8 +521,8 @@ f2a <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
 ```
 
 ```{r}
-f2b <- plot_seekprop(df_hosp_lmic, 'pop_cat', num_colors=6) +
-  ggtitle('Survey respondent')
+f2b <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
+  ggtitle('Diarrhea case definition')
 
 # df_hosp_lmic %>%
 #   group_by(time_care) %>%
@@ -515,7 +536,7 @@ f2b <- plot_seekprop(df_hosp_lmic, 'pop_cat', num_colors=6) +
 
 ```{r}
 f2c <- plot_seekprop(df_hosp_lmic, 'outbreak_desc', num_colors=2) +
-  ggtitle('Study describes an outbreak')
+  ggtitle('During or following a diarrhea outbreak')
 
 # df_hosp_lmic %>%
 #   group_by(outbreak_desc) %>%
@@ -529,7 +550,7 @@ f2c <- plot_seekprop(df_hosp_lmic, 'outbreak_desc', num_colors=2) +
 
 ```{r}
 f2d <- plot_seekprop(df_hosp_lmic, 'self_or_child', num_colors=3) +
-  ggtitle('Self, child, or other/combination')
+  ggtitle('Relationship of diarrhea case to survey respondent')
 
 # df_hosp_lmic %>%
 #   group_by(self_or_child) %>%
@@ -583,13 +604,14 @@ cowplot::plot_grid(s5a, s5b, s5c, s5d,
 
 ```{r}
 # set variables to keep
-vars <- c('time_care', 'recall_time', 'pop_cat', 'mult_choice', 'self_or_child',
+vars <- c('time_care', 'recall_time', 'pop_clinic', 'mult_choice', 'self_or_child',
           'case_cat', 'outbreak_desc', 'location_desc', 'prop_five', 'strat_age')
 
 df_age <- df %>%
-  # filter to hospital/clinic (not private) and LMICs
+  # filter to hospital/clinic (not private), LMICs, and non-clinic-based surveillance
   filter(location_type %in% c('Hospital/Clinic', 'Public Hospital/Clinic'),
-         hic == 0) %>%
+         hic == 0,
+         pop_clinic == 0) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
   group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', vars, 'age_L', 'age_R')) %>%
   summarize(n_did_survey = n_did_survey,
@@ -680,15 +702,15 @@ cowplot::plot_grid(f3a, f3b, f3c, f3d,
 # overall proportion seeking care
 f4a <- plot_seekprop(sr_dat_sources, 'location_type',
                      num_colors=10, palette = 'Spectral') +
-  theme_dark() +
   theme(legend.position = 'none') +
+  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
   ggtitle('Overall (any care, first source, prior to current visit, or within 24 hours)')
 
 # first source of care
 f4b <- plot_seekprop(sr_dat_sources %>% filter(time_care == 'First source'), 
                      'location_type', num_colors=10, palette = 'Spectral') +
-  theme_dark() +
   theme(legend.position = 'none') +
+  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
   ggtitle('First source of care')
 
 # sr_dat_sources %>%
@@ -725,8 +747,8 @@ cowplot::plot_grid(f4a, f4b,
 ```{r figS6, fig.width = 9, fig.height = 7}
 fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
-  theme_dark() +
   theme(legend.position = 'none') +
+  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
   ggtitle(NULL)
 
 fS6 + facet_wrap('income_group', ncol = 1)
@@ -737,8 +759,8 @@ fS6 + facet_wrap('income_group', ncol = 1)
 ```{r figS7, fig.width = 9, fig.height = 7}
 fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
-  theme_dark() +
   theme(legend.position = 'none') +
+  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
   ggtitle(NULL)
 
 fS7 + facet_wrap('case_cat', ncol = 1)
@@ -749,8 +771,8 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 ```{r figS8, fig.width = 9, fig.height = 7}
 fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
-  theme_dark() +
   theme(legend.position = 'none') +
+  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
   ggtitle(NULL)
 
 fS8 + facet_wrap('self_or_child', ncol = 1)
@@ -798,18 +820,19 @@ We build generalized linear models with a study-level random intercept using the
         -   regarding self or child
         -   recall period
         -   multiple choice questions
-        -   study population
     b.  Contextual factors:
         -   outbreak
         -   urban/rural
 
-3.  Multivatiate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
+3.  Multivariate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
 
-*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications, for a total of 146 unique observations corresponding to 114 studies. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
+*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep data for LMIC meta-analysis}
 # subset input data to LMICs
-meta_dat <- sr_dat %>% filter(hic == 0)
+meta_dat <- sr_dat %>% 
+  filter(hic == 0) %>%
+  filter(pop_clinic == 0)
 case_strat <- 'all'
 
 # add random effect label by observation
@@ -822,9 +845,19 @@ meta_dat_would <- sr_dat_would %>%
   mutate(study_lab = 1:nrow(sr_dat_would)) %>%
   arrange(propseek)
 
+# data for clinic-based surveillance analysis
+meta_dat_clinic <- sr_dat %>% 
+  filter(hic == 0) %>%
+  filter(pop_clinic == 1)
+
+meta_dat_clinic <- meta_dat_clinic %>%
+  mutate(study_lab = 1:nrow(meta_dat_clinic)) %>%
+  arrange(propseek)
+
 # create a template table of all covariates and reference categories (for use when building tables later)
 cov_cats <- sr_dat %>% 
   filter(hic == 0) %>%
+  filter(pop_clinic == 0) %>%
   select_at(covs) %>%
   mutate(mult_choice = as.character(mult_choice),
          outbreak_desc = as.character(outbreak_desc)) %>%
@@ -833,7 +866,9 @@ cov_cats <- sr_dat %>%
   arrange(Variable, Category) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 
-# sr_dat %>% filter(hic == 0) %>%
+# sr_dat %>% 
+#   filter(hic == 0) %>%
+#   filter(pop_clinic == 0) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -841,7 +876,9 @@ cov_cats <- sr_dat %>%
 #   ungroup %>%
 #   pretty_table()
 # 
-# sr_dat %>% filter(hic == 0) %>%
+# sr_dat %>% 
+#   filter(hic == 0) %>%
+#   filter(pop_clinic == 0) %>%
 #   summarize(`Weighted mean` = weighted.mean(propseek, n_did_survey),
 #             `Standard deviation` = sd(propseek)) %>%
 #   ungroup %>%
@@ -850,7 +887,9 @@ cov_cats <- sr_dat %>%
 
 ```{r prep data for HIC meta-analysis}
 # subset input data to LMICs
-meta_dat_hic <- sr_dat %>% filter(hic == 1)
+meta_dat_hic <- sr_dat %>% 
+  filter(hic == 1) %>%
+  filter(pop_clinic == 0)
 case_strat <- 'all'
 
 # add random effect label by observation
@@ -861,6 +900,7 @@ meta_dat_hic <- meta_dat_hic %>%
 # create a template table of all covariates and reference categories (for use when building tables later)
 cov_cats_hic <- sr_dat %>% 
   filter(hic == 1) %>%
+  filter(pop_clinic == 0) %>%
   select_at(covs) %>%
   mutate(mult_choice = as.character(mult_choice),
          outbreak_desc = as.character(outbreak_desc)) %>%
@@ -869,7 +909,7 @@ cov_cats_hic <- sr_dat %>%
   arrange(Variable, Category) %>%
   mutate(Reference = ifelse(duplicated(Variable), 0, 1))
 
-# sr_dat %>% filter(hic == 1) %>%
+# sr_dat %>% filter(hic == 1) %>% filter(pop_clinic == 0) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -877,7 +917,7 @@ cov_cats_hic <- sr_dat %>%
 #   ungroup %>%
 #   pretty_table()
 # 
-# sr_dat %>% filter(hic == 1) %>%
+# sr_dat %>% filter(hic == 1) %>% filter(pop_clinic == 0) %>%
 #   summarize(`Weighted mean` = weighted.mean(propseek, n_did_survey),
 #             `Standard deviation` = sd(propseek)) %>%
 #   ungroup %>%
@@ -900,6 +940,12 @@ ma_unadj_would <- metaprop(n_would, n_would_survey, data = meta_dat_would,
                                             meta_dat_would$self_or_child, ', ', meta_dat_would$case_cat), 
                            method = 'GLMM', common = FALSE, prediction = TRUE)
 
+# clinic-based surveillance
+ma_unadj_clinic <- metaprop(n_did, n_did_survey, data = meta_dat_clinic, 
+                     studlab = paste0(meta_dat_clinic$country_iso3, ' (', meta_dat_clinic$study_id, ') ', 
+                                      meta_dat_clinic$self_or_child, ', ', meta_dat_clinic$case_cat), 
+                     method = 'GLMM', common = FALSE, prediction = TRUE)
+
 # did you seek care in HICs
 ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic, 
                          studlab = paste0(meta_dat_hic$country_iso3, ' (', meta_dat_hic$study_id, ') ', 
@@ -916,19 +962,27 @@ ma_unadj
 forest(ma_unadj)
 ```
 
-
 ### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
-```{r figS10, fig.width = 10, fig.height = 7}
+```{r figS10, fig.width = 10, fig.height = 8}
 
 ma_unadj_would
 
 forest(ma_unadj_would)
 ```
 
-### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
+### Figure S11. Forest plot of care seeking at a hospital or clinic by individuals already at a clinic in LMICs
 
-```{r figS11, fig.width = 10, fig.height = 8}
+```{r figS11, fig.width = 10, fig.height = 3}
+
+ma_unadj_clinic
+
+forest(ma_unadj_clinic)
+```
+
+### Figure S12. Forest plot of care seeking at a hospital or clinic in HICs
+
+```{r figS12, fig.width = 10, fig.height = 7}
 
 ma_hic_unadj
 
@@ -1029,63 +1083,13 @@ for (i in 1:length(covs)) {
 }
 ```
 
-```{r run univariate meta-regressions HIC, message = TRUE}
-
-mod_ests_hic <- data.frame(run_id = NA,
-                       mod_id = NA,
-                       mean = NA,
-                       lower = NA, 
-                       upper = NA, 
-                       row.names = NULL)
-mod_ests_hic <- na.omit(mod_ests_hic)
-
-# https://metafor-project.org/doku.php/tips:comp_two_independent_estimates
-
-# loop over covariates
-for (i in 1:length(covs)) {
-
-  mr_fit_hic <- rma(measure = 'PLO',
-                xi = n_did, ni = n_did_survey,
-                method = 'REML', 
-                mods = formula(paste0('~', covs[[i]])), 
-                random = formula(paste0('~', covs[[i]], '|study_lab')),
-                data = meta_dat_hic)
-  
-  # save intercept results
-  mod_ests_hic <- rbind(mod_ests_hic,
-                   data.frame(run_id = paste0('all-uni-', covs[[i]]),
-                              mod_id = 'alpha',
-                              mean = inv.logit(mr_fit_hic$beta[1,1]),
-                              lower = inv.logit(mr_fit_hic$ci.lb[1]),
-                              upper = inv.logit(mr_fit_hic$ci.ub[1]),
-                              row.names = NULL
-                              )
-                   )
-  
-  # save beta coefficients
-  for (c in 2:length(rownames(mr_fit_hic$beta))) {
-      mod_ests_hic <- rbind(mod_ests_hic,
-                       data.frame(
-                         run_id = paste0('all-uni-', covs[[i]]),
-                         mod_id = rownames(mr_fit_hic$beta)[[c]],
-                         mean = exp(mr_fit_hic$beta[c]),
-                         lower = exp(mr_fit_hic$ci.lb[c]),
-                         upper = exp(mr_fit_hic$ci.ub[c]),
-                         row.names = NULL
-                       )
-      )
-    }
-  
-}
-```
-
 ```{r test for confounding with self_or_child LMIC}
 
 # data to just adult vs. child
 meta_dat_ac <- meta_dat %>% filter(self_or_child != 'Other')
 
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice', 'pop_cat')) {
+for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice')) {
 
   mr_fit <- rma(measure = 'PLO',
                 xi = ifelse(meta_dat_ac$self_or_child == 'Child', 0, 1), 
@@ -1125,7 +1129,7 @@ for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_cho
 ```{r test for confounding with outbreak_desc LMIC}
 
 # loop over covariates
-for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
+for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   mr_fit <- rma(measure = 'PLO',
                 xi = outbreak_desc, 
@@ -1170,7 +1174,7 @@ meta_dat_vc <- meta_dat %>% filter(case_cat != 'Gastroenteritis or other etiolog
 meta_dat_ge <- meta_dat %>% filter(case_cat != 'Severe diarrhea or cholera')
 
 # loop over covariates for Severe diarrhea or cholera  -------------------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   mr_fit <- rma(measure = 'PLO',
                 xi = ifelse(meta_dat_vc$case_cat == 'Diarrhea', 0, 1), 
@@ -1208,7 +1212,7 @@ for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mul
 }
 
 # loop over covariates for Gastroenteritis -----------------------
-for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice', 'pop_cat')) {
+for (cov in c('outbreak_desc', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
   
   mr_fit <- rma(measure = 'PLO',
                 xi = ifelse(meta_dat_ge$case_cat == 'Diarrhea', 0, 1), 
@@ -1330,8 +1334,8 @@ mr_fit <- rma(measure = 'PLO',
 mv_fit <- rma(measure = 'PLO',
               xi = n_did, ni = n_did_survey,
               method = 'REML', 
-              mods = ~ case_cat + pop_cat, 
-              random = ~ case_cat + pop_cat | study_id,
+              mods = ~ case_cat + time_care, 
+              random = ~ case_cat + time_care | study_id,
               data = meta_dat)
   
   # save intercept results
@@ -1346,7 +1350,7 @@ mv_fit <- rma(measure = 'PLO',
                    )
   
   # save beta coefficients
-  for (c in 2:length(rownames(mr_fit$beta))) {
+  for (c in 2:length(rownames(mv_fit$beta))) {
       mod_ests <- rbind(mod_ests,
                        data.frame(
                          run_id = 'all-mod2',
@@ -1516,18 +1520,6 @@ mod_ests_uni_did %>%
   save_as_docx(path = here::here('code/tables/tableS2.docx'))
 ```
 
-```{r univariate odds ratios did HIC}
-mod_ests_uni_hic <- mod_ests_hic %>%
-  filter(grepl('all-uni', run_id) & mod_id != 'alpha') %>%
-  or_table(cov_cats_df = cov_cats_hic)
-
-# pretty_table(mod_ests_uni_hic)
-
-# mod_ests_uni_hic %>%
-#   flextable() %>%
-#   save_as_docx(path = here::here('code/tables/tableS3.docx'))
-```
-
 <br>
 
 ### Table 2-1. Sub-analyses by age: studies that are either only adults or only children
@@ -1629,7 +1621,7 @@ dia_coef %>%
 
 ### Table 3. Factors associated with variation in care seeking rates
 
-Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for study respondent.
+Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for timing of care seeking.
 
 ```{r coefs did}
 # print fit results
@@ -1640,7 +1632,7 @@ c3 <- mod_ests %>%
   filter(run_id %in% c('all-mod2'), mod_id != 'alpha')
 
 or_table(c3) %>%
-  pretty_table(title = 'Model including study population and case definition')
+  pretty_table(title = 'Model including timing of care seeking and case definition')
 
 or_table(c3) %>%
   flextable() %>%
@@ -1676,9 +1668,9 @@ ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo,
 
 <br>
 
-### Figure S12. Forest plot of care seeking for general diarrhea in LMICs
+### Figure S13. Forest plot of care seeking for general diarrhea in LMICs
 
-```{r figS12, fig.width = 8, fig.height = 26}
+```{r figS13, fig.width = 8, fig.height = 26}
 
 ma_dia
 
@@ -1687,9 +1679,9 @@ forest(ma_dia)
 
 <br>
 
-### Figure S13. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
+### Figure S14. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
 
-```{r figS13, fig.width = 8, fig.height = 5.25}
+```{r figS14, fig.width = 8, fig.height = 5.25}
 
 ma_sev
 
@@ -1698,9 +1690,9 @@ forest(ma_sev)
 
 <br>
 
-### Figure S14. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
+### Figure S15. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
 
-```{r figS14, fig.width = 8, fig.height = 3.5}
+```{r figS15, fig.width = 8, fig.height = 3.5}
 
 ma_geo
 

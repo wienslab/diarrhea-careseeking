@@ -111,7 +111,7 @@ plot_seekprop <- function(indat, x_col,
                           y_col = 'propseek',
                           rotate_x_labs = FALSE,
                           color_col = x_col,
-                          palette = 'Dark2',
+                          palette = 'Dark2', a = 0.75,
                           num_colors = length(unique(indat[,color_col]))) {
   # plot
   ggplot(indat, aes(x = as.factor(get(x_col)), y = get(y_col))) +
@@ -119,7 +119,7 @@ plot_seekprop <- function(indat, x_col,
     geom_boxplot(outlier.shape = NA) +
     # points (will include the outliers)
     geom_jitter(aes(color = as.factor(get(color_col))),
-                alpha = 0.75) +
+                alpha = a) +
     theme_bw() +
     # wrap x axis labels
     scale_x_discrete(labels = function(x) str_wrap(x, width = 15)) +
