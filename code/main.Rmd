@@ -510,8 +510,8 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 f2a <- plot_seekprop(df_hosp_all_lmic, 'pop_clinic', num_colors=2) +
   ggtitle('Clinic-based surveillance')
 
-# df_hosp_lmic %>%
-#   group_by(case_cat) %>%
+# df_hosp_all_lmic %>%
+#   group_by(pop_clinic %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -525,7 +525,7 @@ f2b <- plot_seekprop(df_hosp_lmic, 'case_cat', num_colors=3) +
   ggtitle('Diarrhea case definition')
 
 # df_hosp_lmic %>%
-#   group_by(time_care) %>%
+#   group_by(case_cat) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -676,15 +676,15 @@ f3c <- plot_seekprop(df_age %>%
 # by case definition
 f3d <- f3c + facet_wrap('case_cat')
 
-df_age %>%
-  filter(prop_five == 0 | prop_five == 1) %>%
-  group_by(prop_five) %>%
-  summarize(median = median(propseek),
-            N = length(propseek),
-            IQR_L = quantile(propseek, 0.25),
-            IQR_R = quantile(propseek, 0.75)) %>%
-  ungroup %>%
-  pretty_table()
+# df_age %>%
+#   filter(prop_five == 0 | prop_five == 1) %>%
+#   group_by(prop_five) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   pretty_table()
 ```
 
 ```{r fig3, fig.width = 9, fig.height = 7}
@@ -704,7 +704,7 @@ f4a <- plot_seekprop(sr_dat_sources, 'location_type',
                      num_colors=10, palette = 'Spectral') +
   theme(legend.position = 'none') +
   scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
-  ggtitle('Overall (any care, first source, prior to current visit, or within 24 hours)')
+  ggtitle('Overall (any care or first source)')
 
 # first source of care
 f4b <- plot_seekprop(sr_dat_sources %>% filter(time_care == 'First source'), 
@@ -764,38 +764,6 @@ fS7 <- plot_seekprop(sr_dat_sources, 'location_type',
   ggtitle(NULL)
 
 fS7 + facet_wrap('case_cat', ncol = 1)
-```
-
-#### Figure S8. Self or child
-
-```{r figS8, fig.width = 9, fig.height = 7}
-fS8 <- plot_seekprop(sr_dat_sources, 'location_type', 
-                     num_colors=10, palette = 'Spectral') +
-  theme(legend.position = 'none') +
-  scale_color_manual(values=c('black', brewer.pal(n=9, name='Dark2'))) +
-  ggtitle(NULL)
-
-fS8 + facet_wrap('self_or_child', ncol = 1)
-
-# sr_dat_sources %>% filter(self_or_child == 'Self') %>%
-#   group_by(location_type) %>%
-#   summarize(median = median(propseek),
-#             N = length(propseek),
-#             IQR_L = quantile(propseek, 0.25),
-#             IQR_R = quantile(propseek, 0.75)) %>%
-#   ungroup %>%
-#   arrange(-median) %>%
-#   pretty_table()
-# 
-# sr_dat_sources %>% filter(self_or_child == 'Child') %>%
-#   group_by(location_type) %>%
-#   summarize(median = median(propseek),
-#             N = length(propseek),
-#             IQR_L = quantile(propseek, 0.25),
-#             IQR_R = quantile(propseek, 0.75)) %>%
-#   ungroup %>%
-#   arrange(-median) %>%
-#   pretty_table()
 ```
 
 <br>
@@ -953,36 +921,36 @@ ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic,
                          method = 'GLMM', common = FALSE, prediction = TRUE)
 ```
 
-### Figure S9. Forest plot of care seeking at a hospital or clinic in LMICs
+### Figure S8. Forest plot of care seeking at a hospital or clinic in LMICs
 
-```{r figS9, fig.width = 10, fig.height = 31}
+```{r figS8, fig.width = 10, fig.height = 31}
 
 ma_unadj
 
 forest(ma_unadj)
 ```
 
-### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
+### Figure S9. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
-```{r figS10, fig.width = 10, fig.height = 8}
+```{r figS9, fig.width = 10, fig.height = 8}
 
 ma_unadj_would
 
 forest(ma_unadj_would)
 ```
 
-### Figure S11. Forest plot of care seeking at a hospital or clinic by individuals already at a clinic in LMICs
+### Figure S10. Forest plot of care seeking at a hospital or clinic by individuals already at a clinic in LMICs
 
-```{r figS11, fig.width = 10, fig.height = 3}
+```{r figS10, fig.width = 10, fig.height = 3}
 
 ma_unadj_clinic
 
 forest(ma_unadj_clinic)
 ```
 
-### Figure S12. Forest plot of care seeking at a hospital or clinic in HICs
+### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
 
-```{r figS12, fig.width = 10, fig.height = 7}
+```{r figS11, fig.width = 10, fig.height = 7}
 
 ma_hic_unadj
 
@@ -1668,9 +1636,9 @@ ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo,
 
 <br>
 
-### Figure S13. Forest plot of care seeking for general diarrhea in LMICs
+### Figure S12. Forest plot of care seeking for general diarrhea in LMICs
 
-```{r figS13, fig.width = 8, fig.height = 26}
+```{r figS12, fig.width = 8, fig.height = 26}
 
 ma_dia
 
@@ -1679,9 +1647,9 @@ forest(ma_dia)
 
 <br>
 
-### Figure S14. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
+### Figure S13. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
 
-```{r figS14, fig.width = 8, fig.height = 5.25}
+```{r figS13, fig.width = 8, fig.height = 5.25}
 
 ma_sev
 
@@ -1690,9 +1658,9 @@ forest(ma_sev)
 
 <br>
 
-### Figure S15. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
+### Figure S14. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
 
-```{r figS15, fig.width = 8, fig.height = 3.5}
+```{r figS14, fig.width = 8, fig.height = 3.5}
 
 ma_geo
 
