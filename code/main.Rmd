@@ -1,6 +1,6 @@
 ---
 title: "Care seeking for diarrheal illnes: a systematic review and meta-analysis"
-author: "Kirsten E. Wiens, Marissa H. Miller, Daniel J. Costello, Ashlynn P. Solomon, Skye M. Hilbert, Elizabeth C. Lee, Andrew S. Azman"
+author: "Kirsten E. Wiens, Marissa H. Miller, Daniel J. Costello, Ashlynn P. Solomon, Skye M. Hilbert, Andrea G. Shipper, Elizabeth C. Lee, Andrew S. Azman"
 output: 
   html_document:
     toc: true
