@@ -15,7 +15,6 @@
 
 4. Use "code/data_quality_checks.Rmd" to run quality checks on the data extracted in the systematic review.
 5. Use "code/main.Rmd" to run analyses that correspond to figures and tables in manuscript.
-6. Old analyses using a stan program can be found in fold code/stan_analysis, and corresponding modeled results can be found in data/generated_data. These are FYI only and not included in the manuscript.
 
 ### Scripts in code folder
 

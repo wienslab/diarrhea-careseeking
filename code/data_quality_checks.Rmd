@@ -1,5 +1,5 @@
 ---
-title: "Diarrhea Care Seeking: Data Quality Checks"
+title: "Care seeking for diarrheal illnes: data quality checks"
 output: 
   html_document:
     toc: true

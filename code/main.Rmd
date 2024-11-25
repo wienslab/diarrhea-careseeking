@@ -217,11 +217,9 @@ sr_dat_sources <- df %>%
 
 <br>
 
-**Note:** Unless otherwise noted, the data presented below represents 161 studies (210 or 211 stratified observation entries) in the **primary, non-overlapping** dataset that asked study participants whether or not the **DID** seek care for a past diarrheal illness.
-
-We also have information on whether individuals **would** seek care for a hypothetical diarrheal illness from 27 studies (96 stratified observation entries).
-
 ### Figure S1. Data coverage by geography
+
+Number of observations in the primary dataset at each administrative level as defined by GADM (https://gadm.org/) by country. Countries with >10 observations displayed as 10.
 
 ```{r, warning= FALSE}
 # shapefile
@@ -234,8 +232,6 @@ shp <- shp %>% dplyr::select(ISO_A3, NAME_SORT, geometry)
 shp_list <- readRDS(here::here("data", "shapefiles", "shp_list.RData"))
 # shp_list contains three shapefiles (shp_admin0, shp_admin1, shp_admin2), e.g. if the minimal admin level of an entry is 0 (country level), the shapefile can be found in shp_admin0. If an entry contains more than one place, the were separated into different rows, each has its own polygon.
 ```
-
-Number of stratified observation entries in the primary dataset at each administrative level by country. Countries with \>10 observations displayed as 10.
 
 ```{r figS1, fig.height = 10, fig.width = 7, warning = FALSE}
 data_loc <- df %>% 
@@ -297,7 +293,7 @@ cowplot::plot_grid(figS1[[1]], figS1[[2]], figS1[[3]], figS1[[4]],
 
 ### Figure S2. Data coverage over time
 
-Number of stratified observation entries in the primary dataset within different time periods. Year represents the year sampling was completed. Excludes 6 entries missing study dates.
+Number of observations in the primary dataset at each administrative level as defined by GADM (https://gadm.org/) by country within different time periods. Countries with >10 observations displayed as 10. Year represents the year sampling was completed. Excludes 6 studies missing a study end date.
 
 ```{r figS2, fig.height = 10, fig.width = 7}
 # similar to those above, but instead of stratification by admin level, stratify into 4 time periods (before 2000~2004, 2005~2009, 2010~2014, after 2015)
@@ -341,18 +337,20 @@ cowplot::plot_grid(figS2[[1]], figS2[[2]], figS2[[3]], figS2[[4]],
                    labels = c('A', 'B', 'C', 'D'),
                    ncol = 1)
 
-# number at each level
-coverage_time %>%
-  group_by(variable) %>%
-  # count observations by time period
-  summarize(observations = sum(observations)) %>%
-  ungroup() %>%
-  pretty_table()
+# # number at each level
+# coverage_time %>%
+#   group_by(variable) %>%
+#   # count observations by time period
+#   summarize(observations = sum(observations)) %>%
+#   ungroup() %>%
+#   pretty_table()
 ```
 
 <br>
 
 ### Table 1. Study characteristics
+
+Number of observations in the primary dataset with each characteristic. A study has more than one observation if it reported results stratified by any of these characteristics. 
 
 ```{r table1}
 
@@ -369,17 +367,6 @@ schar <- df %>%
   dplyr::select_at(c('study_id', 'country_iso3', 'income_group', 'pop_clinic', covs)) %>%
   unique() %>%
   dplyr::select(-study_id, -country_iso3) 
-
-# tmp <- df %>%
-#   # format variables
-#   mutate(outbreak_desc = ifelse(outbreak_desc == 1, 'Yes', 'No')) %>%
-#   # sum up number of tests and sample sizes by observation
-#   dplyr::select_at(c('study_id', 'country_iso3', 'income_group', covs)) %>%
-#   unique() %>%
-#   dplyr::select(-study_id, -country_iso3) %>%
-#   filter(recall_time > 30)
-# 
-# table(tmp$case_cat)
 
 # summarize and make table
 schar %>%
@@ -402,11 +389,9 @@ schar %>%
 
 <br>
 
-## Care seeking trends in the unadjusted data
+## Trends in care seeking at hospitals or clinics in the unadjusted data
 
-**Note:** "Hospitals or clinics" excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific).
-
-*For multiple choice questions where there is more than one category of hospital/clinic, we take the largest proportion that sought care across them.*
+**Note:** "Hospitals or clinics" excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific). For multiple choice questions where there is more than one category of hospital/clinic, we take the largest proportion that sought care across them.
 
 ```{r}
 # all studies
@@ -444,9 +429,9 @@ df_hosp_hic <- df_hosp %>%
   filter(hic == 1)
 ```
 
-<br>
-
 ### Figure S3. Proportion that sought care at a hospital or clinic by region
+
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) World Bank income group and B) World Bank income group and case definition. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r}
 fS3a <- plot_seekprop(df_hosp, 'region', num_colors=10) +
@@ -477,6 +462,8 @@ cowplot::plot_grid(fS3a, fS3b, labels = c('A', 'B'),
 
 ### Figure S4. Proportion that sought care at a hospital or clinic by income group
 
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) World Bank income group and B) World Bank income group and case definition. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+
 ```{r}
 fS4a <- plot_seekprop(df_hosp, 'income_group', num_colors=4) +
   ggtitle('World Bank income classification')
@@ -505,6 +492,8 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 <br>
 
 ### Figure 2. Proportion that sought care at a hospital or clinic in LMICs by observation characteristics
+
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) whether the survey was conducted at a hospital or clinic vs. in a home or other community-based location, B) survey respondent category, C) whether or not the study described an outbreak, and D) whether the care seeking was for the respondent themselves, their child, or other, which often included any household member. Panels B-D are restricted to non-clinic-based studies. Each point represents an observation (N = 151 in A; N = 145 in B-D). Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r}
 f2a <- plot_seekprop(df_hosp_all_lmic, 'pop_clinic', num_colors=2) +
@@ -572,7 +561,7 @@ cowplot::plot_grid(f2a, f2b, f2c, f2d,
 
 ### Figure S5. Proportion that sought care by study quality in LMICs
 
-Overall quality score is whether data is internally consistent + whether sample size was justified + whether the non-response was reported.
+Proportion of respondents in low- and middle-income countries (LMICs) that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) Overall quality score, B) whether the data is internally consistent, C) whether the sample size was justified, and D) whether the non-response rate was reported. Overall quality score is the sum of B-D. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r figS5, fig.width = 8, fig.height = 7}
 s5a <- plot_seekprop(df_hosp_lmic, 'quality_score', num_colors=4) +
@@ -601,6 +590,8 @@ cowplot::plot_grid(s5a, s5b, s5c, s5d,
 <br>
 
 ### Figure 3. Relationship between age and care seeking at hospitals or clinics in LMICs
+
+A-B) Relationship between the proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic (y-axis) and the proportion of the study population under five years of age (x-axis), A) overall and B) stratified by diarrhea case definition. Size of points is proportional to the number of survey respondents per observation (N = 134). Spearman’s rho is shown with 95% confidence interval (CI) in green. Linear relationships are shown with purple lines. C-D) Proportion seeking care grouped by studies that were exclusively among children under five (N = 98) or exclusively among individuals over five (N = 22), C) overall and D) stratified by diarrhea case definition.
 
 ```{r}
 # set variables to keep
@@ -695,7 +686,11 @@ cowplot::plot_grid(f3a, f3b, f3c, f3d,
 
 <br>
 
+## Trends in care seeking at other sources outside the home in LMICs
+
 ### Figure 4. Proportion that sought care by source in LMICs
+
+Proportion of respondents that reported seeking care for diarrheal illness at all categories of care sources, including any care outside of the home, hospitals or clinics including public facilities, private hospitals or clinics, pharmacies or kiosks, health posts, community healthcare workers (CHW), traditional healers, and friends or family, for A) all studies and B) the subset of studies that asked survey respondents about the first source of care they sought. Each point represents an observation.
 
 ```{r}
 
@@ -744,6 +739,8 @@ cowplot::plot_grid(f4a, f4b,
 
 #### Figure S6. Income group
 
+Proportion of respondents in LMICs that reported seeking care for diarrheal illness at all categories of care sources by the World Bank income group of the country the study was conducted in. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+
 ```{r figS6, fig.width = 9, fig.height = 7}
 fS6 <- plot_seekprop(sr_dat_sources, 'location_type', 
                      num_colors=10, palette = 'Spectral') +
@@ -755,6 +752,8 @@ fS6 + facet_wrap('income_group', ncol = 1)
 ```
 
 #### Figure S7. Case definition
+
+Proportion of respondents in LMICs that reported seeking care for diarrheal illness at all categories of care sources by diarrhea case definition. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r figS7, fig.width = 9, fig.height = 7}
 fS7 <- plot_seekprop(sr_dat_sources, 'location_type', 
@@ -769,32 +768,6 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 <br>
 
 ## Adjusted estimates of care seeking at hospitals or clinics
-
-Our goal here is to estimate the proportion of individuals that seek care when they or their child have diarrhea symptoms in LMICs. Since diarrhea symptoms vary, and some of the categories above had very few observations (e.g., cholera and "other") we have grouped these into three broad categories of case definitions (below).
-
-i.  Diarrhea (3+ loose stools in past 24 hours OR general/no explicit definition provided)
-ii. Cholera (acute watery diarrhea of any severity, including resulting in death) or severe diarrhea (danger signs, dehydration, hospitalization, 1+ week duration, or death)
-iii. Gastroenteritis or other etiologies (diarrhea or vomiting, including specific etiologies eg rotavirus or e coli)
-
-We build generalized linear models with a study-level random intercept using the metafor package in R.
-
-1.  Unadjusted
-
-2.  Univariate models adjusted individually for:
-
-    a.  Study methodology and population:
-        -   case definition
-        -   timing of care seeking
-        -   regarding self or child
-        -   recall period
-        -   multiple choice questions
-    b.  Contextual factors:
-        -   outbreak
-        -   urban/rural
-
-3.  Multivariate model(s) adjusted for factors identified as significant but not confounding/collinear in univariate models.
-
-*NB*: Here our observations represent data aggregated to study_id, country, and potential covariate stratifications. For studies with multiple choice questions, we take the maximum sample size and number seeking care for studies where there were multiple categories of "hospital/clinic" as possible answers.
 
 ```{r prep data for LMIC meta-analysis}
 # subset input data to LMICs
@@ -892,8 +865,6 @@ cov_cats_hic <- sr_dat %>%
 #   pretty_table()
 ```
 
-<br>
-
 ```{r run unadjusted meta-analyses}
 
 # did you seek care in LMICs
@@ -923,6 +894,8 @@ ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic,
 
 ### Figure S8. Forest plot of care seeking at a hospital or clinic in LMICs
 
+Estimated proportion that sought care for an actual episode of diarrheal illness at a hospital or clinic across the 145 observations included in the random-effects meta-analysis.
+
 ```{r figS8, fig.width = 10, fig.height = 31}
 
 ma_unadj
@@ -931,6 +904,8 @@ forest(ma_unadj)
 ```
 
 ### Figure S9. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
+
+Estimated proportion that would have sought care for a hypothetical episode of diarrheal illness at a hospital or clinic across the 29 observations included in the random-effects meta-analysis.
 
 ```{r figS9, fig.width = 10, fig.height = 8}
 
@@ -941,6 +916,8 @@ forest(ma_unadj_would)
 
 ### Figure S10. Forest plot of care seeking at a hospital or clinic by individuals already at a clinic in LMICs
 
+Estimated proportion of individuals that reported that a hospital or clinic was their first source of care or that they had previously sought care at a hospital or clinic across the 6 observations from clinic-based studies in LMICs included in the random-effects meta-analysis.
+
 ```{r figS10, fig.width = 10, fig.height = 3}
 
 ma_unadj_clinic
@@ -949,6 +926,8 @@ forest(ma_unadj_clinic)
 ```
 
 ### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
+
+Estimated proportion that sought care for an actual episode of diarrheal illness at a hospital or clinic across the 24 observations from high-income countries (HICs) included in the random-effects meta-analysis.
 
 ```{r figS11, fig.width = 10, fig.height = 7}
 
@@ -1015,7 +994,6 @@ mod_ests <- rbind(mod_ests,
 
 # loop over covariates
 for (i in 1:length(covs)) {
-  message(covs[[i]])
 
   mr_fit <- rma(measure = 'PLO',
                 xi = n_did, ni = n_did_survey,
@@ -1048,7 +1026,6 @@ for (i in 1:length(covs)) {
                        )
       )
     }
-  
 }
 ```
 
@@ -1383,11 +1360,11 @@ names(tabS1) <- c('Version', 'Proportion (%)')
 
 <br>
 
-## Factors associated with variation in care seeking at hospitals or clinics
+## Factors associated with variation in care seeking at hospitals or clinics in LMICs
 
 ### Table S2. Univariate analyses of factors associated with variation in care seeking in LMICs
 
-Odds of seeking care for diarrhea associated with each indicated category compared to the reference group, not adjusting for any other variables.
+Odds of seeking care for diarrhea at a hospital or clinic in a LMIC for each indicated variable category compared to the reference group, adjusting for no other variables. ** indicates significant (p < 0.05).
 
 ```{r univariate odds ratios did LMIC}
 mod_ests_uni <- mod_ests %>%
@@ -1408,7 +1385,7 @@ mod_ests_uni_did %>%
 
 ### Table 2-1. Sub-analyses by age: studies that are either only adults or only children
 
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have 130 observations total here.
+Odds that an individual seeks care for diarrheal illness for a child under five years of age compared to an adult or individual over five years of age. Sub-analysis of studies only among children or only among adults. ** indicates significant (p < 0.05).
 
 ```{r or children adults}
 age_cats <- df_meta1 %>% dplyr::select(prop_five) %>%
@@ -1433,7 +1410,7 @@ mod_ests_age1 %>%
 
 ### Table 2-2. Sub-analyses by age: studies with care seeking stratified by age
 
-Odds of seeking care for diarrhea for adults vs. children, not adjusting for any other variables. We have data from 7 studies that report healthcare seeking at a hospital/clinic by age groups under/over five for LMICs.
+Odds that an individual seeks care for diarrheal illness for a child under five years of age compared to an adult or individual over five years of age. Sub-analysis of studies with care seeking stratified for children and adults. ** indicates significant (p < 0.05).
 
 ```{r or children adults matched}
 mod_ests_age2 <- mod_ests %>%
@@ -1450,6 +1427,8 @@ mod_ests_age2 %>%
 <br>
 
 ### Table S3. Tests for potential confounding with severe diarrhea case definition
+
+Odds that an observation in a LMIC used severe diarrhea or cholera as the case definition instead of general diarrhea for each category compared to the reference group. ** indicates significant (p < 0.05).
 
 ```{r vc_severe confounding}
 mod_ests_vc <- mod_ests %>%
@@ -1505,7 +1484,7 @@ dia_coef %>%
 
 ### Table 3. Factors associated with variation in care seeking rates
 
-Odds that an individual seeks care for themselves or their child overall or by alternate case definitions, adjusting for timing of care seeking.
+Odds that an individual sought care for diarrheal illness for severe diarrhea or cholera and gastroenteritis or other etiologies compared to general diarrhea, adjusting for timing of care seeking. ** indicates significant (p < 0.05).
 
 ```{r coefs did}
 # print fit results
@@ -1554,6 +1533,8 @@ ma_geo <- metaprop(n_did, n_did_survey, data = meta_dat_geo,
 
 ### Figure S12. Forest plot of care seeking for general diarrhea in LMICs
 
+Estimated proportion that sought care at a hospital or clinic across the 122 in LMICs studies that used a general diarrhea case definition
+
 ```{r figS12, fig.width = 8, fig.height = 26}
 
 ma_dia
@@ -1565,6 +1546,8 @@ forest(ma_dia)
 
 ### Figure S13. Forest plot of care seeking for for severe diarrhea or cholera in LMICs
 
+Estimated proportion that sought care at a hospital or clinic across the 15 studies in LMICs that used a severe diarrhea or cholera case definition, including deaths.
+
 ```{r figS13, fig.width = 8, fig.height = 5.25}
 
 ma_sev
@@ -1575,6 +1558,8 @@ forest(ma_sev)
 <br>
 
 ### Figure S14. Forest plot of care seeking for gastroenteritis or other etiologies in LMICs
+
+Estimated proportion that sought care at a hospital or clinic across the 8 studies in LMICs that used a gastroenteritis or other etiologies case definition.
 
 ```{r figS14, fig.width = 8, fig.height = 3.5}
 
