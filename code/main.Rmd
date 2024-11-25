@@ -213,7 +213,7 @@ sr_dat_sources <- df %>%
 
 ### Fig 1. PRISMA flow diagram
 
-![PRISMA diagram.](PRISMA-20231218.png)
+![PRISMA diagram.](PRISMA_20241119.png)
 
 <br>
 
@@ -1015,6 +1015,7 @@ mod_ests <- rbind(mod_ests,
 
 # loop over covariates
 for (i in 1:length(covs)) {
+  message(covs[[i]])
 
   mr_fit <- rma(measure = 'PLO',
                 xi = n_did, ni = n_did_survey,
@@ -1047,90 +1048,6 @@ for (i in 1:length(covs)) {
                        )
       )
     }
-  
-}
-```
-
-```{r test for confounding with self_or_child LMIC}
-
-# data to just adult vs. child
-meta_dat_ac <- meta_dat %>% filter(self_or_child != 'Other')
-
-# loop over covariates
-for (cov in c('case_cat', 'time_care', 'outbreak_desc', 'recall_time', 'mult_choice')) {
-
-  mr_fit <- rma(measure = 'PLO',
-                xi = ifelse(meta_dat_ac$self_or_child == 'Child', 0, 1), 
-                ni = rep(1, nrow(meta_dat_ac)), 
-                method = 'REML', 
-                mods = formula(paste0('~', cov)), 
-                random = formula(paste0('~', cov, '|study_lab')),
-                data = meta_dat_ac)
-  
-  # save intercept results
-  mod_ests <- rbind(mod_ests,
-                   data.frame(run_id = paste0('all-self_or_child-', cov),
-                              mod_id = 'alpha',
-                              mean = inv.logit(mr_fit$beta[1,1]),
-                              lower = inv.logit(mr_fit$ci.lb[1]),
-                              upper = inv.logit(mr_fit$ci.ub[1]),
-                              row.names = NULL
-                              )
-                   )
-  
-  # save beta coefficients
-  for (c in 2:length(rownames(mr_fit$beta))) {
-      mod_ests <- rbind(mod_ests,
-                       data.frame(
-                         run_id = paste0('all-self_or_child-', cov),
-                         mod_id = rownames(mr_fit$beta)[[c]],
-                         mean = exp(mr_fit$beta[c]),
-                         lower = exp(mr_fit$ci.lb[c]),
-                         upper = exp(mr_fit$ci.ub[c]),
-                         row.names = NULL
-                       )
-      )
-    }
-}
-```
-
-```{r test for confounding with outbreak_desc LMIC}
-
-# loop over covariates
-for (cov in c('case_cat', 'time_care', 'recall_time', 'self_or_child', 'mult_choice')) {
-  
-  mr_fit <- rma(measure = 'PLO',
-                xi = outbreak_desc, 
-                ni = rep(1, nrow(meta_dat)), 
-                method = 'REML', 
-                mods = formula(paste0('~', cov)), 
-                random = formula(paste0('~', cov, '|study_lab')),
-                data = meta_dat)
-  
-  # save intercept results
-  mod_ests <- rbind(mod_ests,
-                   data.frame(run_id = paste0('all-outbreak_desc-', cov),
-                              mod_id = 'alpha',
-                              mean = inv.logit(mr_fit$beta[1,1]),
-                              lower = inv.logit(mr_fit$ci.lb[1]),
-                              upper = inv.logit(mr_fit$ci.ub[1]),
-                              row.names = NULL
-                              )
-                   )
-  
-  # save beta coefficients
-  for (c in 2:length(rownames(mr_fit$beta))) {
-      mod_ests <- rbind(mod_ests,
-                       data.frame(
-                         run_id = paste0('all-outbreak_desc-', cov),
-                         mod_id = rownames(mr_fit$beta)[[c]],
-                         mean = exp(mr_fit$beta[c]),
-                         lower = exp(mr_fit$ci.lb[c]),
-                         upper = exp(mr_fit$ci.ub[c]),
-                         row.names = NULL
-                       )
-      )
-  }
   
 }
 ```
@@ -1335,7 +1252,6 @@ mv_fit <- rma(measure = 'PLO',
 
 ```{r sub-analysis by age 1 LMIC}
 # subset data
-#NB: still don't find significant differences when subset by case definition, although the etiologies approach significance
 df_meta1 <- df_age %>% 
   filter(prop_five == 0 | prop_five == 1) %>%
   arrange(propseek)
