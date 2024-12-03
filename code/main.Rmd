@@ -827,25 +827,25 @@ cowplot::plot_grid(fS8a, fS8b,
                    labels = c('A', 'B'),
                    nrow = 2)
 
-sr_clinic_sources %>% filter(time_care == 'First source') %>%
-  group_by(location_type) %>%
-  summarize(median = median(propseek),
-            N = length(propseek),
-            IQR_L = quantile(propseek, 0.25),
-            IQR_R = quantile(propseek, 0.75)) %>%
-  ungroup %>%
-  arrange(-median) %>%
-  pretty_table()
+# sr_clinic_sources %>% filter(time_care == 'First source') %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   arrange(-median) %>%
+#   pretty_table()
 
-sr_clinic_sources %>% filter(time_care == 'Prior to current visit') %>%
-  group_by(location_type) %>%
-  summarize(median = median(propseek),
-            N = length(propseek),
-            IQR_L = quantile(propseek, 0.25),
-            IQR_R = quantile(propseek, 0.75)) %>%
-  ungroup %>%
-  arrange(-median) %>%
-  pretty_table()
+# sr_clinic_sources %>% filter(time_care == 'Prior to current visit') %>%
+#   group_by(location_type) %>%
+#   summarize(median = median(propseek),
+#             N = length(propseek),
+#             IQR_L = quantile(propseek, 0.25),
+#             IQR_R = quantile(propseek, 0.75)) %>%
+#   ungroup %>%
+#   arrange(-median) %>%
+#   pretty_table()
 ```
 
 <br>
