@@ -209,6 +209,42 @@ sr_dat_sources <- df %>%
                                            'Other', 'Pharmacy', 'Health post', 'CHW', 'Traditional Healer', 'Friends/Family')))
 ```
 
+```{r clinic-based data for did analysis of all care sources}
+# create secondary dataset for clinic-based studies: where else DID people seek care
+
+# proportion seeking care for examining non-hospital sources of care
+# aggregate across stratifications that we're not including as covariates or stratifications
+sr_clinic_sources <- df %>%
+  # restrict to LMICs
+  filter(hic == 0) %>%
+  # restrict to clinic-based surveys
+  filter(pop_clinic == 1) %>%
+  # group public hospital/clinic with general hospital/clinic for consistency with rest of paper
+  mutate(location_type = ifelse(location_type == 'Public Hospital/Clinic', 'Hospital/Clinic', location_type)) %>%
+  # aggregate care seeking to entry_id, accounting for multiple choice questions
+  group_by_at(c('entry_id', 'study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
+  summarize(n_did_survey = n_did_survey,
+            n_did = ifelse(mult_choice == 0, sum(n_did), max(n_did))) %>%
+  ungroup() %>%
+  unique() %>%
+  # format variables, combining some to reduce combinations
+  mutate(recall_time = ifelse(recall_time <= 30, 'under30', 'over30_orNA'),
+         recall_time = ifelse(is.na(recall_time), 'over30_orNA', recall_time),
+         location_desc = ifelse(location_desc == 'Urban', 'Urban',
+                                ifelse(location_desc %in% c('Rural', 'Peri-Urban', 'IDP or Refugee Camp'), 'Non-urban', 
+                                       'Urban and non-urban'))) %>%
+  # aggregate care seeking numbers to study_id and covariate categories ("observations")
+  group_by_at(c('study_id', 'country_iso3', 'region', 'hic', 'income_group', 'location_type', covs)) %>%
+  summarize(n_did_survey = sum(n_did_survey), 
+            n_did = sum(n_did)) %>%
+  ungroup() %>%
+  unique() %>%
+  mutate(propseek = n_did/n_did_survey,
+         location_type = factor(location_type, 
+                                levels = c('Any care outside home', 'Hospital/Clinic', 'Public Hospital/Clinic', 'Private Hospital/Clinic',
+                                           'Other', 'Pharmacy', 'Health post', 'CHW', 'Traditional Healer', 'Friends/Family')))
+```
+
 ## Study characteristics
 
 ### Fig 1. PRISMA flow diagram
@@ -493,14 +529,14 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 
 ### Figure 2. Proportion that sought care at a hospital or clinic in LMICs by observation characteristics
 
-Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) whether the survey was conducted at a hospital or clinic vs. in a home or other community-based location, B) survey respondent category, C) whether or not the study described an outbreak, and D) whether the care seeking was for the respondent themselves, their child, or other, which often included any household member. Panels B-D are restricted to non-clinic-based studies. Each point represents an observation (N = 151 in A; N = 145 in B-D). Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) whether the study surveyed participants about care seeking at any time during illness or their first source of care, B) survey respondent category, C) whether or not the study described an outbreak, and D) whether the care seeking was for the respondent themselves, their child, or other, which often included any household member. Panels B-D are restricted to non-clinic-based studies. Each point represents an observation (N = 151 in A; N = 145 in B-D). Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r}
-f2a <- plot_seekprop(df_hosp_all_lmic, 'pop_clinic', num_colors=2) +
-  ggtitle('Clinic-based surveillance')
+f2a <- plot_seekprop(df_hosp_lmic, 'time_care', num_colors=2) +
+  ggtitle('Timing of care seeking')
 
-# df_hosp_all_lmic %>%
-#   group_by(pop_clinic %>%
+# df_hosp_lmic %>%
+#   group_by(time_care) %>%
 #   summarize(median = median(propseek),
 #             N = length(propseek),
 #             IQR_L = quantile(propseek, 0.25),
@@ -767,6 +803,53 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 
 <br>
 
+### Figure S8. Proportion that sought care by source and observation characteristic for clinic-based studies
+
+Proportion of respondents in clinic-based studies in LMICs that reported seeking care for diarrheal illness at all categories of care sources A) as their first source of care and B) prior to their current hospital or clinic visit. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+
+```{r figS8, fig.width = 8, fig.height = 6.5}
+# overall proportion seeking care
+fS8a <- plot_seekprop(sr_clinic_sources %>% filter(time_care == 'First source'), 
+                      'location_type', num_colors=10, palette = 'Spectral') +
+  theme(legend.position = 'none') +
+  scale_color_manual(values=brewer.pal(n=9, name='Dark2')) +
+  ggtitle('First source of care')
+
+# first source of care
+fS8b <- plot_seekprop(sr_clinic_sources %>% 
+                        filter(time_care == 'Prior to current visit', location_type != 'Any care outside home'), 
+                     'location_type', num_colors=10, palette = 'Spectral') +
+  theme(legend.position = 'none') +
+  scale_color_manual(values=brewer.pal(n=9, name='Dark2')) +
+  ggtitle('Care sought prior to current visit')
+
+cowplot::plot_grid(fS8a, fS8b,
+                   labels = c('A', 'B'),
+                   nrow = 2)
+
+sr_clinic_sources %>% filter(time_care == 'First source') %>%
+  group_by(location_type) %>%
+  summarize(median = median(propseek),
+            N = length(propseek),
+            IQR_L = quantile(propseek, 0.25),
+            IQR_R = quantile(propseek, 0.75)) %>%
+  ungroup %>%
+  arrange(-median) %>%
+  pretty_table()
+
+sr_clinic_sources %>% filter(time_care == 'Prior to current visit') %>%
+  group_by(location_type) %>%
+  summarize(median = median(propseek),
+            N = length(propseek),
+            IQR_L = quantile(propseek, 0.25),
+            IQR_R = quantile(propseek, 0.75)) %>%
+  ungroup %>%
+  arrange(-median) %>%
+  pretty_table()
+```
+
+<br>
+
 ## Adjusted estimates of care seeking at hospitals or clinics
 
 ```{r prep data for LMIC meta-analysis}
@@ -784,15 +867,6 @@ meta_dat <- meta_dat %>%
 # data for "would you" analysis
 meta_dat_would <- sr_dat_would %>% 
   mutate(study_lab = 1:nrow(sr_dat_would)) %>%
-  arrange(propseek)
-
-# data for clinic-based surveillance analysis
-meta_dat_clinic <- sr_dat %>% 
-  filter(hic == 0) %>%
-  filter(pop_clinic == 1)
-
-meta_dat_clinic <- meta_dat_clinic %>%
-  mutate(study_lab = 1:nrow(meta_dat_clinic)) %>%
   arrange(propseek)
 
 # create a template table of all covariates and reference categories (for use when building tables later)
@@ -879,12 +953,6 @@ ma_unadj_would <- metaprop(n_would, n_would_survey, data = meta_dat_would,
                                             meta_dat_would$self_or_child, ', ', meta_dat_would$case_cat), 
                            method = 'GLMM', common = FALSE, prediction = TRUE)
 
-# clinic-based surveillance
-ma_unadj_clinic <- metaprop(n_did, n_did_survey, data = meta_dat_clinic, 
-                     studlab = paste0(meta_dat_clinic$country_iso3, ' (', meta_dat_clinic$study_id, ') ', 
-                                      meta_dat_clinic$self_or_child, ', ', meta_dat_clinic$case_cat), 
-                     method = 'GLMM', common = FALSE, prediction = TRUE)
-
 # did you seek care in HICs
 ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic, 
                          studlab = paste0(meta_dat_hic$country_iso3, ' (', meta_dat_hic$study_id, ') ', 
@@ -892,37 +960,26 @@ ma_hic_unadj <- metaprop(n_did, n_did_survey, data = meta_dat_hic,
                          method = 'GLMM', common = FALSE, prediction = TRUE)
 ```
 
-### Figure S8. Forest plot of care seeking at a hospital or clinic in LMICs
+### Figure S9. Forest plot of care seeking at a hospital or clinic in LMICs
 
 Estimated proportion that sought care for an actual episode of diarrheal illness at a hospital or clinic across the 145 observations included in the random-effects meta-analysis.
 
-```{r figS8, fig.width = 10, fig.height = 31}
+```{r figS9, fig.width = 10, fig.height = 31}
 
 ma_unadj
 
 forest(ma_unadj)
 ```
 
-### Figure S9. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
+### Figure S10. Forest plot of hypothetical care seeking at a hospital or clinic in LMICs
 
 Estimated proportion that would have sought care for a hypothetical episode of diarrheal illness at a hospital or clinic across the 29 observations included in the random-effects meta-analysis.
 
-```{r figS9, fig.width = 10, fig.height = 8}
+```{r figS10, fig.width = 10, fig.height = 8}
 
 ma_unadj_would
 
 forest(ma_unadj_would)
-```
-
-### Figure S10. Forest plot of care seeking at a hospital or clinic by individuals already at a clinic in LMICs
-
-Estimated proportion of individuals that reported that a hospital or clinic was their first source of care or that they had previously sought care at a hospital or clinic across the 6 observations from clinic-based studies in LMICs included in the random-effects meta-analysis.
-
-```{r figS10, fig.width = 10, fig.height = 3}
-
-ma_unadj_clinic
-
-forest(ma_unadj_clinic)
 ```
 
 ### Figure S11. Forest plot of care seeking at a hospital or clinic in HICs
