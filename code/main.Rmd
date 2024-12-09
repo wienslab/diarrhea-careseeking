@@ -205,7 +205,7 @@ sr_dat_sources <- df %>%
   unique() %>%
   mutate(propseek = n_did/n_did_survey,
          location_type = factor(location_type, 
-                                levels = c('Any care outside home', 'Hospital/Clinic', 'Public Hospital/Clinic', 'Private Hospital/Clinic',
+                                levels = c('Any care outside home', 'Hospital/Clinic', 'Private Hospital/Clinic',
                                            'Other', 'Pharmacy', 'Health post', 'CHW', 'Traditional Healer', 'Friends/Family')))
 ```
 
@@ -218,7 +218,7 @@ sr_clinic_sources <- df %>%
   # restrict to LMICs
   filter(hic == 0) %>%
   # restrict to clinic-based surveys
-  filter(pop_clinic == 1) %>%
+  filter(pop_clinic == 1, location_type != 'Any care outside home') %>%
   # group public hospital/clinic with general hospital/clinic for consistency with rest of paper
   mutate(location_type = ifelse(location_type == 'Public Hospital/Clinic', 'Hospital/Clinic', location_type)) %>%
   # aggregate care seeking to entry_id, accounting for multiple choice questions
@@ -241,7 +241,7 @@ sr_clinic_sources <- df %>%
   unique() %>%
   mutate(propseek = n_did/n_did_survey,
          location_type = factor(location_type, 
-                                levels = c('Any care outside home', 'Hospital/Clinic', 'Public Hospital/Clinic', 'Private Hospital/Clinic',
+                                levels = c('Hospital/Clinic', 'Private Hospital/Clinic',
                                            'Other', 'Pharmacy', 'Health post', 'CHW', 'Traditional Healer', 'Friends/Family')))
 ```
 
@@ -467,7 +467,7 @@ df_hosp_hic <- df_hosp %>%
 
 ### Figure S3. Proportion that sought care at a hospital or clinic by region
 
-Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) World Bank income group and B) World Bank income group and case definition. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) geographic region and B) geographic region and case definition. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r}
 fS3a <- plot_seekprop(df_hosp, 'region', num_colors=10) +
@@ -597,7 +597,7 @@ cowplot::plot_grid(f2a, f2b, f2c, f2d,
 
 ### Figure S5. Proportion that sought care by study quality in LMICs
 
-Proportion of respondents in low- and middle-income countries (LMICs) that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) Overall quality score, B) whether the data is internally consistent, C) whether the sample size was justified, and D) whether the non-response rate was reported. Overall quality score is the sum of B-D. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+Proportion of respondents in low- and middle-income countries (LMICs) that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) overall quality score, B) whether the data is internally consistent (i.e., numbers for the proportion seeking care were identical throughout the abstract, text, and tables), C) whether the manuscript included a justification for their sample size, and D) whether the non-response rate was reported. Overall quality score is the sum of B-D. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r figS5, fig.width = 8, fig.height = 7}
 s5a <- plot_seekprop(df_hosp_lmic, 'quality_score', num_colors=4) +
@@ -807,20 +807,20 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 
 Proportion of respondents in clinic-based studies in LMICs that reported seeking care for diarrheal illness at all categories of care sources A) as their first source of care and B) prior to their current hospital or clinic visit. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
-```{r figS8, fig.width = 8, fig.height = 6.5}
+```{r figS8, fig.width = 7, fig.height = 6}
 # overall proportion seeking care
 fS8a <- plot_seekprop(sr_clinic_sources %>% filter(time_care == 'First source'), 
-                      'location_type', num_colors=10, palette = 'Spectral') +
+                      'location_type', num_colors=9, palette = 'Spectral') +
   theme(legend.position = 'none') +
-  scale_color_manual(values=brewer.pal(n=9, name='Dark2')) +
+  scale_color_manual(values=brewer.pal(n=9, name='Dark2'), drop = FALSE) +
   ggtitle('First source of care')
 
 # first source of care
 fS8b <- plot_seekprop(sr_clinic_sources %>% 
-                        filter(time_care == 'Prior to current visit', location_type != 'Any care outside home'), 
-                     'location_type', num_colors=10, palette = 'Spectral') +
+                        filter(time_care == 'Prior to current visit'), 
+                     'location_type', num_colors=9, palette = 'Spectral') +
   theme(legend.position = 'none') +
-  scale_color_manual(values=brewer.pal(n=9, name='Dark2')) +
+  scale_color_manual(values=brewer.pal(n=9, name='Dark2'), drop = FALSE) +
   ggtitle('Care sought prior to current visit')
 
 cowplot::plot_grid(fS8a, fS8b,
