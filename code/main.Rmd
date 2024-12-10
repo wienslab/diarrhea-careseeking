@@ -529,7 +529,7 @@ cowplot::plot_grid(fS4a, fS4b, labels = c('A', 'B'),
 
 ### Figure 2. Proportion that sought care at a hospital or clinic in LMICs by observation characteristics
 
-Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) whether the study surveyed participants about care seeking at any time during illness or their first source of care, B) survey respondent category, C) whether or not the study described an outbreak, and D) whether the care seeking was for the respondent themselves, their child, or other, which often included any household member. Panels B-D are restricted to non-clinic-based studies. Each point represents an observation (N = 151 in A; N = 145 in B-D). Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+Proportion of respondents that reported seeking care for diarrheal illness at a hospital or clinic grouped by A) whether the study surveyed participants about care seeking at any time during illness or their first source of care, B) survey respondent category, C) whether or not the study described an outbreak, and D) whether the care seeking was for the respondent themselves, their child, or other, which often included any household member. Each point represents an observation (N = 145). Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r}
 f2a <- plot_seekprop(df_hosp_lmic, 'time_care', num_colors=2) +
@@ -1501,9 +1501,9 @@ mod_ests_vc %>%
 
 <br>
 
-### Table S4. Sub-analyses of study describing an outbreak and recall period
+### Table S4. Sub-analyses of associations with outbreak context and recall period
 
-#### Vc or severe diarrhea
+#### Severe diarrhea and cholera
 
 Is there still an effect of **being in an outbreak** when we subset the data to just case definitions specific to cholera or severe diarrhea (including death)?
 
