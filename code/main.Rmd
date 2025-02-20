@@ -11,7 +11,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
-                      dev=c('png', 'pdf'), fig.path='figures/')
+                      dev=c('png', 'pdf', 'tiff'), ppi=300, fig.path='figures/')
 knitr::opts_knit$set(root.dir = here::here())
 ```
 
@@ -429,6 +429,8 @@ schar %>%
 
 **Note:** "Hospitals or clinics" excludes individuals seeking care exclusively or explicitly at private hospitals/clinics, i.e., this includes location categories "Hospital/Clinic" (general) and "Public Hospital/Clinic" (more specific). For multiple choice questions where there is more than one category of hospital/clinic, we take the largest proportion that sought care across them.
 
+In addition, with the exception of Figure S8, clinic-based surveillance studies are excluded from all figures and analyses below.
+
 ```{r}
 # all studies
 df_hosp_all <- sr_dat %>%
@@ -803,9 +805,9 @@ fS7 + facet_wrap('case_cat', ncol = 1)
 
 <br>
 
-### Figure S8. Proportion that sought care by source and observation characteristic for clinic-based studies
+### Figure S8. Proportion that sought care by source for clinic-based surveillance studies
 
-Proportion of respondents in clinic-based studies in LMICs that reported seeking care for diarrheal illness at all categories of care sources A) as their first source of care and B) prior to their current hospital or clinic visit. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
+Proportion of respondents in clinic-based surveillance studies in LMICs that reported seeking care for diarrheal illness at all categories of care sources A) as their first source of care and B) prior to their current hospital or clinic visit. Each point represents an observation. Boxes represent the median and interquartile range (IQR) of the proportion for each group. Lines extend from the top and bottom of box to the largest proportion value no further than 1.5 * IQR from the box.
 
 ```{r figS8, fig.width = 7, fig.height = 6}
 # overall proportion seeking care
@@ -813,7 +815,7 @@ fS8a <- plot_seekprop(sr_clinic_sources %>% filter(time_care == 'First source'),
                       'location_type', num_colors=9, palette = 'Spectral') +
   theme(legend.position = 'none') +
   scale_color_manual(values=brewer.pal(n=9, name='Dark2'), drop = FALSE) +
-  ggtitle('First source of care')
+  ggtitle('First source of care among people surveyed at hospitals/clinics')
 
 # first source of care
 fS8b <- plot_seekprop(sr_clinic_sources %>% 
@@ -821,7 +823,7 @@ fS8b <- plot_seekprop(sr_clinic_sources %>%
                      'location_type', num_colors=9, palette = 'Spectral') +
   theme(legend.position = 'none') +
   scale_color_manual(values=brewer.pal(n=9, name='Dark2'), drop = FALSE) +
-  ggtitle('Care sought prior to current visit')
+  ggtitle('Care sought prior to current hospital/clinic visit')
 
 cowplot::plot_grid(fS8a, fS8b,
                    labels = c('A', 'B'),
